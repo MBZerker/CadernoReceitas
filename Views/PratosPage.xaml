@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CadernoReceitas.Views.PratosPage"
+             x:Name="Page"
+             Title="Pratos">
+    <ScrollView>
+        <VerticalStackLayout Padding="18" Spacing="12">
+            <Label Text="Pratos" Style="{StaticResource PageTitle}" />
+            <Frame Style="{StaticResource CardFrame}">
+                <VerticalStackLayout Spacing="10">
+                    <Entry Placeholder="Nome do prato" Text="{Binding Nome}" />
+                    <Picker Title="Praca" ItemsSource="{Binding Pracas}" ItemDisplayBinding="{Binding Nome}" SelectedItem="{Binding SelectedPraca}" />
+                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
+                        <Button Text="Salvar" Command="{Binding SaveCommand}" />
+                        <Button Grid.Column="1" Text="Limpar" BackgroundColor="{StaticResource Muted}" Command="{Binding ClearCommand}" />
+                        <Button Grid.Column="2" Text="Excluir" BackgroundColor="#DC2626" Command="{Binding DeleteCommand}" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Frame>
+            <CollectionView ItemsSource="{Binding Items}">
+                <CollectionView.EmptyView><Label Text="Cadastre pracas e seus pratos." Style="{StaticResource MutedText}" /></CollectionView.EmptyView>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Frame Style="{StaticResource CardFrame}">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <VerticalStackLayout>
+                                    <Label Text="{Binding Nome}" FontSize="18" FontAttributes="Bold" />
+                                    <Label Text="{Binding PracaNome}" Style="{StaticResource MutedText}" />
+                                </VerticalStackLayout>
+                                <Button Grid.Column="1" Text="Editar" Command="{Binding BindingContext.SelectCommand, Source={x:Reference Page}}" CommandParameter="{Binding .}" />
+                            </Grid>
+                        </Frame>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

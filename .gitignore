@@ -1,0 +1,22 @@
+bin/
+obj/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.log
+local.properties
+*.aab
+
+# Android signing secrets
+*.keystore
+*.jks
+keystore.properties
+
+# Local OS/editor noise
+Thumbs.db
+Desktop.ini
+.DS_Store
