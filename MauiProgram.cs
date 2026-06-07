@@ -26,7 +26,11 @@ public static class MauiProgram
         builder.Services.AddSingleton<AppDatabase>();
         builder.Services.AddSingleton<QuizService>();
         builder.Services.AddSingleton<UpdateService>();
+        builder.Services.AddSingleton<ThemeService>();
 
+        builder.Services.AddTransient<PrincipalViewModel>();
+        builder.Services.AddTransient<CadernoViewModel>();
+        builder.Services.AddTransient<ReceitaDetalheViewModel>();
         builder.Services.AddTransient<HomeViewModel>();
         builder.Services.AddTransient<RestaurantesViewModel>();
         builder.Services.AddTransient<PracasViewModel>();
@@ -35,6 +39,9 @@ public static class MauiProgram
         builder.Services.AddTransient<QuizViewModel>();
         builder.Services.AddTransient<ResultadoQuizViewModel>();
 
+        builder.Services.AddTransient<PrincipalPage>();
+        builder.Services.AddTransient<CadernoPage>();
+        builder.Services.AddTransient<ReceitaDetalhePage>();
         builder.Services.AddTransient<HomePage>();
         builder.Services.AddTransient<RestaurantesPage>();
         builder.Services.AddTransient<PracasPage>();

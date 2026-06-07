@@ -10,8 +10,16 @@ public sealed class Receita
     [Indexed]
     public int PratoId { get; set; }
 
+    [Indexed]
+    public int CadernoId { get; set; }
+
+    public string Nome { get; set; } = string.Empty;
+
     public string ModoPreparo { get; set; } = string.Empty;
 
     [Ignore]
     public string PratoNome { get; set; } = string.Empty;
+
+    [Ignore]
+    public int TotalIngredientes { get; set; }
 }

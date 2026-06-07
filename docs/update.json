@@ -1,12 +1,12 @@
 {
-  "versionCode": 1,
-  "versionName": "0.1.0",
+  "versionCode": 2,
+  "versionName": "0.2.0",
   "critical": false,
   "pageUrl": "https://mbzerker.github.io/CadernoReceitas/",
-  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.1.0.apk",
-  "sha256": "cea508d2c2780e3f8dd7d42c4a129eacd73a83e903847a0ede729fe21818f5cd",
-  "sizeBytes": 29515258,
+  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.2.0.apk",
+  "sha256": "C901E679630292AF34D841414BC0764332E93A8253ACECE8F747EBEAAAD16F31",
+  "sizeBytes": 40680470,
   "signatureSha256": "",
   "origin": "GitHub Pages oficial do Caderno de Receitas",
-  "changelog": "Primeira versao navegavel com cadastro offline, receitas, ingredientes, quiz, modo prova e historico."
+  "changelog": "Nova tela Principal com logotipo, cadernos de receitas, fluxo caderno-receita-ingredientes, categorias de ingredientes e tema claro/escuro no estilo CompraLink."
 }

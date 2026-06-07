@@ -1,14 +1,15 @@
-﻿namespace CadernoReceitas;
+namespace CadernoReceitas;
 
 public partial class App : Application
 {
-	public App()
-	{
-		InitializeComponent();
-	}
+    public App(Services.ThemeService themeService)
+    {
+        InitializeComponent();
+        themeService.ApplySavedTheme();
+    }
 
-	protected override Window CreateWindow(IActivationState? activationState)
-	{
-		return new Window(new AppShell());
-	}
+    protected override Window CreateWindow(IActivationState? activationState)
+    {
+        return new Window(new AppShell());
+    }
 }

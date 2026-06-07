@@ -13,4 +13,7 @@ public sealed class Ingrediente
     public string Nome { get; set; } = string.Empty;
 
     public string Quantidade { get; set; } = string.Empty;
+
+    [Indexed]
+    public string Categoria { get; set; } = string.Empty;
 }

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CadernoReceitas.Views.ReceitaDetalhePage"
+             x:Name="Page"
+             Title="{Binding Nome}">
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="14">
+            <Frame Style="{StaticResource CardFrame}">
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="58,*" ColumnSpacing="14">
+                        <Image Source="icon_recipe" HeightRequest="50" WidthRequest="50" />
+                        <Entry Grid.Column="1" Placeholder="Nome da receita" Text="{Binding Nome}" FontSize="20" FontAttributes="Bold" />
+                    </Grid>
+                    <Editor Placeholder="Modo de preparo" AutoSize="TextChanges" HeightRequest="150" Text="{Binding ModoPreparo}" />
+                    <ImageButton Style="{StaticResource IconOnlyButton}" Source="icon_update" Command="{Binding SalvarReceitaCommand}" SemanticProperties.Description="Salvar receita" />
+                </VerticalStackLayout>
+            </Frame>
+
+            <Frame Style="{StaticResource CardFrame}">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Ingrediente" Style="{StaticResource SectionTitle}" />
+                    <Entry Placeholder="Nome do ingrediente" Text="{Binding IngredienteNome}" />
+                    <Entry Placeholder="Quantidade" Text="{Binding IngredienteQuantidade}" />
+                    <Entry Placeholder="Categoria. Ex: gordura, laticinio, tempero" Text="{Binding IngredienteCategoria}" />
+                    <Picker Title="Categorias ja usadas" ItemsSource="{Binding Categorias}" SelectedItem="{Binding IngredienteCategoria}" />
+                    <ImageButton Style="{StaticResource IconOnlyButton}" Source="icon_add" Command="{Binding AdicionarIngredienteCommand}" SemanticProperties.Description="Adicionar ingrediente" />
+                </VerticalStackLayout>
+            </Frame>
+
+            <CollectionView ItemsSource="{Binding Ingredientes}">
+                <CollectionView.EmptyView>
+                    <Frame Style="{StaticResource CardFrame}">
+                        <Label Text="Nenhum ingrediente cadastrado nesta receita." Style="{StaticResource MutedText}" />
+                    </Frame>
+                </CollectionView.EmptyView>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Frame Style="{StaticResource CardFrame}">
+                            <Grid ColumnDefinitions="52,*,Auto" ColumnSpacing="12">
+                                <Image Source="icon_ingredient" HeightRequest="44" WidthRequest="44" />
+                                <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                    <Label Text="{Binding Nome}" FontSize="17" FontAttributes="Bold" TextColor="{AppThemeBinding Light=#17212B, Dark=#F8FAFC}" />
+                                    <Label Text="{Binding Quantidade}" Style="{StaticResource MutedText}" />
+                                    <Label Text="{Binding Categoria}" TextColor="{AppThemeBinding Light=#B83216, Dark=#FFE7B0}" FontAttributes="Bold" />
+                                </VerticalStackLayout>
+                                <ImageButton Grid.Column="2" Style="{StaticResource IconOnlyButton}" Source="icon_update" Command="{Binding BindingContext.ExcluirIngredienteCommand, Source={x:Reference Page}}" CommandParameter="{Binding .}" SemanticProperties.Description="Excluir ingrediente" />
+                            </Grid>
+                        </Frame>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

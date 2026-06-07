@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CadernoReceitas.Views.PrincipalPage"
+             x:Name="Page"
+             Title="Principal">
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="14">
+            <Image Source="logo_caderno_real" Aspect="AspectFit" HeightRequest="150" />
+
+            <Frame Style="{StaticResource ActionFrame}">
+                <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10">
+                    <ImageButton Style="{StaticResource IconOnlyButton}" Source="icon_add" Command="{Binding NovoCadernoCommand}" SemanticProperties.Description="Adicionar novo caderno de receitas" />
+                    <ImageButton Grid.Column="1" Style="{StaticResource IconOnlyButton}" Source="icon_test" Command="{Binding TestesCommand}" SemanticProperties.Description="Abrir testes" />
+                    <ImageButton Grid.Column="2" Style="{StaticResource IconOnlyButton}" Source="icon_theme" Command="{Binding AlternarTemaCommand}" SemanticProperties.Description="Alternar tema claro e escuro" />
+                    <ImageButton Grid.Column="3" Style="{StaticResource IconOnlyButton}" Source="icon_update" Command="{Binding CheckUpdatesCommand}" SemanticProperties.Description="Verificar atualizacoes" />
+                </Grid>
+            </Frame>
+
+            <Label Text="{Binding Status}" Style="{StaticResource MutedText}" />
+
+            <CollectionView ItemsSource="{Binding Cadernos}">
+                <CollectionView.EmptyView>
+                    <Frame Style="{StaticResource CardFrame}">
+                        <Label Text="Crie o primeiro caderno pelo botao de adicionar." Style="{StaticResource MutedText}" />
+                    </Frame>
+                </CollectionView.EmptyView>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Frame Style="{StaticResource CardFrame}">
+                            <Frame.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding BindingContext.AbrirCadernoCommand, Source={x:Reference Page}}" CommandParameter="{Binding .}" />
+                            </Frame.GestureRecognizers>
+                            <Grid ColumnDefinitions="64,*" ColumnSpacing="14">
+                                <Image Source="icon_notebook" HeightRequest="54" WidthRequest="54" />
+                                <VerticalStackLayout Grid.Column="1" Spacing="3">
+                                    <Label Text="{Binding Nome}" FontSize="20" FontAttributes="Bold" TextColor="{AppThemeBinding Light=#17212B, Dark=#F8FAFC}" />
+                                    <Label Text="{Binding Descricao}" Style="{StaticResource MutedText}" />
+                                    <Label Text="{Binding TotalReceitas, StringFormat='{0} receitas'}" TextColor="{AppThemeBinding Light=#B83216, Dark=#FFE7B0}" FontAttributes="Bold" />
+                                </VerticalStackLayout>
+                            </Grid>
+                        </Frame>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>
