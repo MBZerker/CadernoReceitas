@@ -3,7 +3,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="CadernoReceitas.Views.CadernoPage"
              x:Name="Page"
-             Title="{Binding NomeCaderno}">
+             Title="{Binding NomeCaderno}"
+             BackgroundImageSource="bg_caderno">
     <ScrollView>
         <VerticalStackLayout Padding="16" Spacing="14">
             <Frame Style="{StaticResource CardFrame}">
@@ -18,12 +19,14 @@
 
             <Frame Style="{StaticResource CardFrame}">
                 <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto" RowSpacing="10" ColumnSpacing="12">
-                    <Label Text="Novo grupo" Style="{StaticResource SectionTitle}" />
-                    <Entry Grid.Row="1" Grid.ColumnSpan="2" Placeholder="Ex: Bases, molhos, massas, sobremesas" Text="{Binding NovoGrupoNome}" />
-                    <Entry Grid.Row="2" Placeholder="Descricao curta" Text="{Binding NovoGrupoDescricao}" />
+                    <Label Text="Categoria" Style="{StaticResource SectionTitle}" />
+                    <Entry Grid.Row="1" Grid.ColumnSpan="2" Style="{StaticResource RecipeEntry}" Placeholder="Ex: Bases, molhos, massas, sobremesas" Text="{Binding NovoGrupoNome}" />
+                    <Entry Grid.Row="2" Style="{StaticResource RecipeEntry}" Placeholder="Descricao curta" Text="{Binding NovoGrupoDescricao}" />
                     <ImageButton Grid.Row="2" Grid.Column="1" Style="{StaticResource PrimaryIconButton}" Source="icon_add" Command="{Binding NovoGrupoCommand}" SemanticProperties.Description="Adicionar grupo" />
                 </Grid>
             </Frame>
+
+            <SearchBar Style="{StaticResource RecipeSearchBar}" Placeholder="Pesquisar categorias" Text="{Binding SearchText}" />
 
             <CollectionView ItemsSource="{Binding Grupos}">
                 <CollectionView.EmptyView>
@@ -37,13 +40,14 @@
                             <Frame.GestureRecognizers>
                                 <TapGestureRecognizer Command="{Binding BindingContext.AbrirGrupoCommand, Source={x:Reference Page}}" CommandParameter="{Binding .}" />
                             </Frame.GestureRecognizers>
-                            <Grid ColumnDefinitions="58,*" ColumnSpacing="14">
+                            <Grid ColumnDefinitions="58,*,Auto" ColumnSpacing="14">
                                 <Image Source="icon_group" HeightRequest="50" WidthRequest="50" />
                                 <VerticalStackLayout Grid.Column="1" Spacing="3">
                                     <Label Text="{Binding Nome}" FontSize="19" FontAttributes="Bold" TextColor="{StaticResource Ink}" />
                                     <Label Text="{Binding Descricao}" Style="{StaticResource MutedText}" />
                                     <Label Text="{Binding TotalReceitas, StringFormat='{0} receitas'}" TextColor="{StaticResource RecipeRed}" FontAttributes="Bold" />
                                 </VerticalStackLayout>
+                                <ImageButton Grid.Column="2" Style="{StaticResource TinyMenuButton}" Command="{Binding BindingContext.MenuGrupoCommand, Source={x:Reference Page}}" CommandParameter="{Binding .}" SemanticProperties.Description="Opcoes da categoria" />
                             </Grid>
                         </Frame>
                     </DataTemplate>

@@ -3,28 +3,30 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="CadernoReceitas.Views.ReceitaDetalhePage"
              x:Name="Page"
-             Title="{Binding Nome}">
+             Title="{Binding Nome}"
+             BackgroundImageSource="bg_ingredientes">
     <ScrollView>
         <VerticalStackLayout Padding="16" Spacing="14">
             <Frame Style="{StaticResource CardFrame}">
                 <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="58,*,Auto" RowSpacing="10" ColumnSpacing="14">
                     <Image Source="icon_recipe" HeightRequest="50" WidthRequest="50" />
-                    <Entry Grid.Column="1" Placeholder="Nome da receita" Text="{Binding Nome}" FontSize="20" FontAttributes="Bold" />
+                    <Entry Grid.Column="1" Style="{StaticResource RecipeEntry}" Placeholder="Nome da receita" Text="{Binding Nome}" FontSize="20" FontAttributes="Bold" />
                     <ImageButton Grid.Column="2" Style="{StaticResource PrimaryIconButton}" Source="icon_save" Command="{Binding SalvarReceitaCommand}" SemanticProperties.Description="Salvar receita" />
-                    <Editor Grid.Row="1" Grid.ColumnSpan="3" Placeholder="Modo de preparo" AutoSize="TextChanges" HeightRequest="150" Text="{Binding ModoPreparo}" />
+                    <Editor Grid.Row="1" Grid.ColumnSpan="3" Style="{StaticResource RecipeEditor}" Placeholder="Modo de preparo" AutoSize="TextChanges" HeightRequest="150" Text="{Binding ModoPreparo}" />
                 </Grid>
             </Frame>
 
             <Frame Style="{StaticResource CardFrame}">
-                <VerticalStackLayout Spacing="10">
-                    <Label Text="Ingrediente" Style="{StaticResource SectionTitle}" />
-                    <Entry Placeholder="Nome do ingrediente" Text="{Binding IngredienteNome}" />
-                    <Entry Placeholder="Quantidade" Text="{Binding IngredienteQuantidade}" />
-                    <Entry Placeholder="Categoria. Ex: gordura, laticinio, tempero" Text="{Binding IngredienteCategoria}" />
-                    <Picker Title="Categorias ja usadas" ItemsSource="{Binding Categorias}" SelectedItem="{Binding IngredienteCategoria}" />
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="Ingrediente" Style="{StaticResource SectionTitle}" />
+                    <Entry Style="{StaticResource RecipeEntry}" Placeholder="Nome do ingrediente" Text="{Binding IngredienteNome}" />
+                    <Picker Style="{StaticResource RecipePicker}" Title="Ingredientes ja usados" ItemsSource="{Binding SugestoesIngredientes}" SelectedItem="{Binding IngredienteNome}" />
+                    <Entry Style="{StaticResource RecipeEntry}" Placeholder="Quantidade" Text="{Binding IngredienteQuantidade}" />
+                    <Entry Style="{StaticResource RecipeEntry}" Placeholder="Categoria. Ex: gordura, laticinio, tempero" Text="{Binding IngredienteCategoria}" />
+                    <Picker Style="{StaticResource RecipePicker}" Title="Categorias ja usadas" ItemsSource="{Binding Categorias}" SelectedItem="{Binding IngredienteCategoria}" />
 
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                        <Picker Title="Vincular receita preparada" ItemsSource="{Binding ReceitasParaVincular}" SelectedItem="{Binding ReceitaIngredienteSelecionada}" ItemDisplayBinding="{Binding Nome}" />
+                        <Picker Style="{StaticResource RecipePicker}" Title="Vincular receita preparada" ItemsSource="{Binding ReceitasParaVincular}" SelectedItem="{Binding ReceitaIngredienteSelecionada}" ItemDisplayBinding="{Binding Nome}" />
                         <ImageButton Grid.Column="1" Style="{StaticResource SmallIconButton}" Source="icon_delete" Command="{Binding LimparReceitaIngredienteCommand}" SemanticProperties.Description="Limpar receita vinculada" />
                     </Grid>
                     <Grid ColumnDefinitions="34,*" ColumnSpacing="10">
@@ -36,6 +38,8 @@
                 </VerticalStackLayout>
             </Frame>
 
+            <SearchBar Style="{StaticResource RecipeSearchBar}" Placeholder="Pesquisar ingredientes" Text="{Binding SearchText}" />
+
             <CollectionView ItemsSource="{Binding Ingredientes}">
                 <CollectionView.EmptyView>
                     <Frame Style="{StaticResource CardFrame}">
@@ -45,7 +49,7 @@
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
                         <Frame Style="{StaticResource CardFrame}">
-                            <Grid ColumnDefinitions="52,*,56,56" ColumnSpacing="12">
+                            <Grid ColumnDefinitions="52,*,56,50" ColumnSpacing="12">
                                 <Image Source="icon_ingredient" HeightRequest="44" WidthRequest="44" />
                                 <VerticalStackLayout Grid.Column="1" Spacing="2">
                                     <Label Text="{Binding Nome}" FontSize="17" FontAttributes="Bold" TextColor="{StaticResource Ink}" />
@@ -55,7 +59,7 @@
                                     <Label Text="{Binding ReceitaIngredienteNome, StringFormat='Receita: {0}'}" IsVisible="{Binding TemReceitaVinculada}" TextColor="{StaticResource RecipeGold}" FontAttributes="Bold" />
                                 </VerticalStackLayout>
                                 <ImageButton Grid.Column="2" Style="{StaticResource SmallIconButton}" Source="icon_link" IsVisible="{Binding TemReceitaVinculada}" Command="{Binding BindingContext.AbrirReceitaVinculadaCommand, Source={x:Reference Page}}" CommandParameter="{Binding .}" SemanticProperties.Description="Abrir receita vinculada" />
-                                <ImageButton Grid.Column="3" Style="{StaticResource SmallIconButton}" Source="icon_delete" Command="{Binding BindingContext.ExcluirIngredienteCommand, Source={x:Reference Page}}" CommandParameter="{Binding .}" SemanticProperties.Description="Excluir ingrediente" />
+                                <ImageButton Grid.Column="3" Style="{StaticResource TinyMenuButton}" Command="{Binding BindingContext.MenuIngredienteCommand, Source={x:Reference Page}}" CommandParameter="{Binding .}" SemanticProperties.Description="Opcoes do ingrediente" />
                             </Grid>
                         </Frame>
                     </DataTemplate>

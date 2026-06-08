@@ -10,6 +10,7 @@ namespace CadernoReceitas.ViewModels;
 public sealed partial class ReceitaDetalheViewModel : BaseViewModel
 {
     private readonly AppDatabase database;
+    private readonly List<Ingrediente> todosIngredientes = new();
 
     [ObservableProperty]
     private int receitaId;
@@ -38,9 +39,14 @@ public sealed partial class ReceitaDetalheViewModel : BaseViewModel
     [ObservableProperty]
     private string ingredienteVinculoResumo = "Opcional: selecione uma receita cadastrada para usar como ingrediente preparado.";
 
+    [ObservableProperty]
+    private string searchText = string.Empty;
+
     public ObservableCollection<Ingrediente> Ingredientes { get; } = new();
 
     public ObservableCollection<string> Categorias { get; } = new();
+
+    public ObservableCollection<string> SugestoesIngredientes { get; } = new();
 
     public ObservableCollection<Receita> ReceitasParaVincular { get; } = new();
 
@@ -83,16 +89,20 @@ public sealed partial class ReceitaDetalheViewModel : BaseViewModel
         Nome = Receita?.Nome ?? "Receita";
         ModoPreparo = Receita?.ModoPreparo ?? string.Empty;
 
-        Ingredientes.Clear();
-        foreach (var item in await database.GetIngredientesAsync(ReceitaId))
-        {
-            Ingredientes.Add(item);
-        }
+        todosIngredientes.Clear();
+        todosIngredientes.AddRange(await database.GetIngredientesAsync(ReceitaId));
+        ApplySearch();
 
         Categorias.Clear();
         foreach (var item in await database.GetCategoriasIngredientesAsync())
         {
             Categorias.Add(item);
+        }
+
+        SugestoesIngredientes.Clear();
+        foreach (var item in await database.GetNomesIngredientesAsync())
+        {
+            SugestoesIngredientes.Add(item);
         }
 
         ReceitasParaVincular.Clear();
@@ -110,6 +120,21 @@ public sealed partial class ReceitaDetalheViewModel : BaseViewModel
         Receita.ModoPreparo = ModoPreparo.Trim();
         await database.SaveAsync(Receita);
         await LoadAsync();
+    }
+
+    partial void OnSearchTextChanged(string value) => ApplySearch();
+
+    private void ApplySearch()
+    {
+        Ingredientes.Clear();
+        foreach (var item in todosIngredientes.Where(item =>
+            MatchesSearch(item.Nome, SearchText) ||
+            MatchesSearch(item.Quantidade, SearchText) ||
+            MatchesSearch(item.Categoria, SearchText) ||
+            MatchesSearch(item.ReceitaIngredienteNome, SearchText)))
+        {
+            Ingredientes.Add(item);
+        }
     }
 
     [RelayCommand]
@@ -156,5 +181,40 @@ public sealed partial class ReceitaDetalheViewModel : BaseViewModel
     {
         await database.DeleteAsync(ingrediente);
         await LoadAsync();
+    }
+
+    [RelayCommand]
+    private async Task MenuIngredienteAsync(Ingrediente ingrediente)
+    {
+        var action = await Shell.Current.DisplayActionSheet(ingrediente.Nome, "Cancelar", null, "Editar", "Excluir");
+        if (action == "Editar")
+        {
+            var nome = await Shell.Current.DisplayPromptAsync("Editar ingrediente", "Nome:", "Salvar", "Cancelar", initialValue: ingrediente.Nome);
+            if (string.IsNullOrWhiteSpace(nome)) return;
+            var quantidade = await Shell.Current.DisplayPromptAsync("Editar ingrediente", "Quantidade:", "Salvar", "Manter", initialValue: ingrediente.Quantidade);
+            var categoria = await Shell.Current.DisplayPromptAsync("Editar ingrediente", "Categoria:", "Salvar", "Manter", initialValue: ingrediente.Categoria);
+            ingrediente.Nome = nome.Trim();
+            if (quantidade is not null)
+            {
+                ingrediente.Quantidade = quantidade.Trim();
+            }
+
+            if (categoria is not null)
+            {
+                ingrediente.Categoria = categoria.Trim();
+            }
+
+            await database.SaveAsync(ingrediente);
+            await LoadAsync();
+            return;
+        }
+
+        if (action == "Excluir")
+        {
+            var confirm = await Shell.Current.DisplayAlert("Excluir ingrediente", $"Excluir \"{ingrediente.Nome}\"?", "Excluir", "Cancelar");
+            if (!confirm) return;
+            await database.DeleteAsync(ingrediente);
+            await LoadAsync();
+        }
     }
 }

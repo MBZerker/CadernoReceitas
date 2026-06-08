@@ -10,6 +10,7 @@ namespace CadernoReceitas.ViewModels;
 public sealed partial class GrupoViewModel : BaseViewModel
 {
     private readonly AppDatabase database;
+    private readonly List<Receita> todasReceitas = new();
 
     [ObservableProperty]
     private int grupoId;
@@ -28,6 +29,9 @@ public sealed partial class GrupoViewModel : BaseViewModel
 
     [ObservableProperty]
     private string novaReceitaPreparo = string.Empty;
+
+    [ObservableProperty]
+    private string searchText = string.Empty;
 
     public ObservableCollection<Receita> Receitas { get; } = new();
 
@@ -50,11 +54,9 @@ public sealed partial class GrupoViewModel : BaseViewModel
         CadernoId = grupo?.CadernoId ?? 0;
         NomeGrupo = grupo?.Nome ?? "Grupo";
         DescricaoGrupo = grupo?.Descricao ?? string.Empty;
-        Receitas.Clear();
-        foreach (var item in await database.GetReceitasDoGrupoAsync(GrupoId))
-        {
-            Receitas.Add(item);
-        }
+        todasReceitas.Clear();
+        todasReceitas.AddRange(await database.GetReceitasDoGrupoAsync(GrupoId));
+        ApplySearch();
     }
 
     [RelayCommand]
@@ -74,10 +76,52 @@ public sealed partial class GrupoViewModel : BaseViewModel
         await LoadAsync();
     }
 
+    partial void OnSearchTextChanged(string value) => ApplySearch();
+
+    private void ApplySearch()
+    {
+        Receitas.Clear();
+        foreach (var item in todasReceitas.Where(item =>
+            MatchesSearch(item.Nome, SearchText) ||
+            MatchesSearch(item.ModoPreparo, SearchText)))
+        {
+            Receitas.Add(item);
+        }
+    }
+
     [RelayCommand]
     private Task AbrirReceitaAsync(Receita receita)
     {
         return Shell.Current.GoToAsync($"receitaDetalhe?receitaId={receita.Id}");
+    }
+
+    [RelayCommand]
+    private async Task MenuReceitaAsync(Receita receita)
+    {
+        var action = await Shell.Current.DisplayActionSheet(receita.Nome, "Cancelar", null, "Editar", "Excluir");
+        if (action == "Editar")
+        {
+            var nome = await Shell.Current.DisplayPromptAsync("Editar receita", "Nome:", "Salvar", "Cancelar", initialValue: receita.Nome);
+            if (string.IsNullOrWhiteSpace(nome)) return;
+            var preparo = await Shell.Current.DisplayPromptAsync("Editar receita", "Modo de preparo:", "Salvar", "Manter", initialValue: receita.ModoPreparo);
+            receita.Nome = nome.Trim();
+            if (preparo is not null)
+            {
+                receita.ModoPreparo = preparo.Trim();
+            }
+
+            await database.SaveAsync(receita);
+            await LoadAsync();
+            return;
+        }
+
+        if (action == "Excluir")
+        {
+            var confirm = await Shell.Current.DisplayAlert("Excluir receita", $"Excluir \"{receita.Nome}\" e seus ingredientes?", "Excluir", "Cancelar");
+            if (!confirm) return;
+            await database.DeleteReceitaAsync(receita);
+            await LoadAsync();
+        }
     }
 
     [RelayCommand]

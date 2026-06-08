@@ -1,12 +1,12 @@
 {
-  "versionCode": 3,
-  "versionName": "0.3.0",
+  "versionCode": 4,
+  "versionName": "0.4.0",
   "critical": false,
   "pageUrl": "https://mbzerker.github.io/CadernoReceitas/",
-  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.3.0.apk",
-  "sha256": "DEB346A6CBFF33D0A0AB498BC232BB0F0D6FB24F7BD9CBE5F62D247E626E7E99",
-  "sizeBytes": 40813181,
+  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.4.0.apk",
+  "sha256": "4C8CEAF6A03820474D2B7E671F271A81C7F97618570B66D237806E91CEF996C8",
+  "sizeBytes": 53122619,
   "signatureSha256": "",
   "origin": "GitHub Pages oficial do Caderno de Receitas",
-  "changelog": "Splash corrigida, tema claro fixo, grupos dentro dos cadernos, botoes maiores e ingredientes que podem vincular outras receitas como preparos base."
+  "changelog": "Splash Android em tela cheia, fundos de tela, frames translucidos, pesquisa por tela, menus de editar/excluir, autocomplete de ingredientes e atualizacao com download e barra de progresso."
 }

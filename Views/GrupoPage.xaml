@@ -3,7 +3,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="CadernoReceitas.Views.GrupoPage"
              x:Name="Page"
-             Title="{Binding NomeGrupo}">
+             Title="{Binding NomeGrupo}"
+             BackgroundImageSource="bg_receitas">
     <ScrollView>
         <VerticalStackLayout Padding="16" Spacing="14">
             <Frame Style="{StaticResource CardFrame}">
@@ -19,11 +20,13 @@
             <Frame Style="{StaticResource CardFrame}">
                 <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto" RowSpacing="10" ColumnSpacing="12">
                     <Label Text="Nova receita" Style="{StaticResource SectionTitle}" />
-                    <Entry Grid.Row="1" Grid.ColumnSpan="2" Placeholder="Nome da receita" Text="{Binding NovaReceitaNome}" />
-                    <Editor Grid.Row="2" Placeholder="Modo de preparo inicial" AutoSize="TextChanges" HeightRequest="96" Text="{Binding NovaReceitaPreparo}" />
+                    <Entry Grid.Row="1" Grid.ColumnSpan="2" Style="{StaticResource RecipeEntry}" Placeholder="Nome da receita" Text="{Binding NovaReceitaNome}" />
+                    <Editor Grid.Row="2" Style="{StaticResource RecipeEditor}" Placeholder="Modo de preparo inicial" AutoSize="TextChanges" HeightRequest="96" Text="{Binding NovaReceitaPreparo}" />
                     <ImageButton Grid.Row="2" Grid.Column="1" Style="{StaticResource PrimaryIconButton}" Source="icon_add" Command="{Binding NovaReceitaCommand}" SemanticProperties.Description="Adicionar receita" />
                 </Grid>
             </Frame>
+
+            <SearchBar Style="{StaticResource RecipeSearchBar}" Placeholder="Pesquisar receitas" Text="{Binding SearchText}" />
 
             <CollectionView ItemsSource="{Binding Receitas}">
                 <CollectionView.EmptyView>
@@ -37,13 +40,14 @@
                             <Frame.GestureRecognizers>
                                 <TapGestureRecognizer Command="{Binding BindingContext.AbrirReceitaCommand, Source={x:Reference Page}}" CommandParameter="{Binding .}" />
                             </Frame.GestureRecognizers>
-                            <Grid ColumnDefinitions="58,*" ColumnSpacing="14">
+                            <Grid ColumnDefinitions="58,*,Auto" ColumnSpacing="14">
                                 <Image Source="icon_recipe" HeightRequest="50" WidthRequest="50" />
                                 <VerticalStackLayout Grid.Column="1" Spacing="3">
                                     <Label Text="{Binding Nome}" FontSize="19" FontAttributes="Bold" TextColor="{StaticResource Ink}" />
                                     <Label Text="{Binding ModoPreparo}" MaxLines="2" LineBreakMode="TailTruncation" Style="{StaticResource MutedText}" />
                                     <Label Text="{Binding TotalIngredientes, StringFormat='{0} ingredientes'}" TextColor="{StaticResource RecipeRed}" FontAttributes="Bold" />
                                 </VerticalStackLayout>
+                                <ImageButton Grid.Column="2" Style="{StaticResource TinyMenuButton}" Command="{Binding BindingContext.MenuReceitaCommand, Source={x:Reference Page}}" CommandParameter="{Binding .}" SemanticProperties.Description="Opcoes da receita" />
                             </Grid>
                         </Frame>
                     </DataTemplate>

@@ -143,6 +143,17 @@ public sealed class AppDatabase
             .ToList();
     }
 
+    public async Task<List<string>> GetNomesIngredientesAsync()
+    {
+        await InitializeAsync();
+        return (await database.Table<Ingrediente>().ToListAsync())
+            .Select(item => item.Nome)
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(item => item)
+            .ToList();
+    }
+
     public async Task<List<Restaurante>> GetRestaurantesAsync()
     {
         await InitializeAsync();
