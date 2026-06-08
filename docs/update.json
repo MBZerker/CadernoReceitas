@@ -1,12 +1,12 @@
 {
-  "versionCode": 2,
-  "versionName": "0.2.0",
+  "versionCode": 3,
+  "versionName": "0.3.0",
   "critical": false,
   "pageUrl": "https://mbzerker.github.io/CadernoReceitas/",
-  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.2.0.apk",
-  "sha256": "C901E679630292AF34D841414BC0764332E93A8253ACECE8F747EBEAAAD16F31",
-  "sizeBytes": 40680470,
+  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.3.0.apk",
+  "sha256": "DEB346A6CBFF33D0A0AB498BC232BB0F0D6FB24F7BD9CBE5F62D247E626E7E99",
+  "sizeBytes": 40813181,
   "signatureSha256": "",
   "origin": "GitHub Pages oficial do Caderno de Receitas",
-  "changelog": "Nova tela Principal com logotipo, cadernos de receitas, fluxo caderno-receita-ingredientes, categorias de ingredientes e tema claro/escuro no estilo CompraLink."
+  "changelog": "Splash corrigida, tema claro fixo, grupos dentro dos cadernos, botoes maiores e ingredientes que podem vincular outras receitas como preparos base."
 }

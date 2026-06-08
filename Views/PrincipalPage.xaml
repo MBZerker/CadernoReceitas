@@ -9,11 +9,10 @@
             <Image Source="logo_caderno_real" Aspect="AspectFit" HeightRequest="150" />
 
             <Frame Style="{StaticResource ActionFrame}">
-                <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10">
+                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
                     <ImageButton Style="{StaticResource IconOnlyButton}" Source="icon_add" Command="{Binding NovoCadernoCommand}" SemanticProperties.Description="Adicionar novo caderno de receitas" />
                     <ImageButton Grid.Column="1" Style="{StaticResource IconOnlyButton}" Source="icon_test" Command="{Binding TestesCommand}" SemanticProperties.Description="Abrir testes" />
-                    <ImageButton Grid.Column="2" Style="{StaticResource IconOnlyButton}" Source="icon_theme" Command="{Binding AlternarTemaCommand}" SemanticProperties.Description="Alternar tema claro e escuro" />
-                    <ImageButton Grid.Column="3" Style="{StaticResource IconOnlyButton}" Source="icon_update" Command="{Binding CheckUpdatesCommand}" SemanticProperties.Description="Verificar atualizacoes" />
+                    <ImageButton Grid.Column="2" Style="{StaticResource IconOnlyButton}" Source="icon_update" Command="{Binding CheckUpdatesCommand}" SemanticProperties.Description="Verificar atualizacoes" />
                 </Grid>
             </Frame>
 
@@ -34,9 +33,9 @@
                             <Grid ColumnDefinitions="64,*" ColumnSpacing="14">
                                 <Image Source="icon_notebook" HeightRequest="54" WidthRequest="54" />
                                 <VerticalStackLayout Grid.Column="1" Spacing="3">
-                                    <Label Text="{Binding Nome}" FontSize="20" FontAttributes="Bold" TextColor="{AppThemeBinding Light=#17212B, Dark=#F8FAFC}" />
+                                    <Label Text="{Binding Nome}" FontSize="20" FontAttributes="Bold" TextColor="{StaticResource Ink}" />
                                     <Label Text="{Binding Descricao}" Style="{StaticResource MutedText}" />
-                                    <Label Text="{Binding TotalReceitas, StringFormat='{0} receitas'}" TextColor="{AppThemeBinding Light=#B83216, Dark=#FFE7B0}" FontAttributes="Bold" />
+                                    <Label Text="{Binding TotalReceitas, StringFormat='{0} receitas'}" TextColor="{StaticResource RecipeRed}" FontAttributes="Bold" />
                                 </VerticalStackLayout>
                             </Grid>
                         </Frame>

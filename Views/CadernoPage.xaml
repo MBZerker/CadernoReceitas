@@ -17,32 +17,32 @@
             </Frame>
 
             <Frame Style="{StaticResource CardFrame}">
-                <VerticalStackLayout Spacing="10">
-                    <Label Text="Nova receita" Style="{StaticResource SectionTitle}" />
-                    <Entry Placeholder="Nome da receita" Text="{Binding NovaReceitaNome}" />
-                    <Editor Placeholder="Modo de preparo inicial" AutoSize="TextChanges" HeightRequest="92" Text="{Binding NovaReceitaPreparo}" />
-                    <ImageButton Style="{StaticResource IconOnlyButton}" Source="icon_add" Command="{Binding NovaReceitaCommand}" SemanticProperties.Description="Adicionar receita" />
-                </VerticalStackLayout>
+                <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto" RowSpacing="10" ColumnSpacing="12">
+                    <Label Text="Novo grupo" Style="{StaticResource SectionTitle}" />
+                    <Entry Grid.Row="1" Grid.ColumnSpan="2" Placeholder="Ex: Bases, molhos, massas, sobremesas" Text="{Binding NovoGrupoNome}" />
+                    <Entry Grid.Row="2" Placeholder="Descricao curta" Text="{Binding NovoGrupoDescricao}" />
+                    <ImageButton Grid.Row="2" Grid.Column="1" Style="{StaticResource PrimaryIconButton}" Source="icon_add" Command="{Binding NovoGrupoCommand}" SemanticProperties.Description="Adicionar grupo" />
+                </Grid>
             </Frame>
 
-            <CollectionView ItemsSource="{Binding Receitas}">
+            <CollectionView ItemsSource="{Binding Grupos}">
                 <CollectionView.EmptyView>
                     <Frame Style="{StaticResource CardFrame}">
-                        <Label Text="Adicione receitas a este caderno." Style="{StaticResource MutedText}" />
+                        <Label Text="Crie um grupo para organizar as receitas deste caderno." Style="{StaticResource MutedText}" />
                     </Frame>
                 </CollectionView.EmptyView>
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
                         <Frame Style="{StaticResource CardFrame}">
                             <Frame.GestureRecognizers>
-                                <TapGestureRecognizer Command="{Binding BindingContext.AbrirReceitaCommand, Source={x:Reference Page}}" CommandParameter="{Binding .}" />
+                                <TapGestureRecognizer Command="{Binding BindingContext.AbrirGrupoCommand, Source={x:Reference Page}}" CommandParameter="{Binding .}" />
                             </Frame.GestureRecognizers>
                             <Grid ColumnDefinitions="58,*" ColumnSpacing="14">
-                                <Image Source="icon_recipe" HeightRequest="50" WidthRequest="50" />
+                                <Image Source="icon_group" HeightRequest="50" WidthRequest="50" />
                                 <VerticalStackLayout Grid.Column="1" Spacing="3">
-                                    <Label Text="{Binding Nome}" FontSize="19" FontAttributes="Bold" TextColor="{AppThemeBinding Light=#17212B, Dark=#F8FAFC}" />
-                                    <Label Text="{Binding ModoPreparo}" MaxLines="2" LineBreakMode="TailTruncation" Style="{StaticResource MutedText}" />
-                                    <Label Text="{Binding TotalIngredientes, StringFormat='{0} ingredientes'}" TextColor="{AppThemeBinding Light=#B83216, Dark=#FFE7B0}" FontAttributes="Bold" />
+                                    <Label Text="{Binding Nome}" FontSize="19" FontAttributes="Bold" TextColor="{StaticResource Ink}" />
+                                    <Label Text="{Binding Descricao}" Style="{StaticResource MutedText}" />
+                                    <Label Text="{Binding TotalReceitas, StringFormat='{0} receitas'}" TextColor="{StaticResource RecipeRed}" FontAttributes="Bold" />
                                 </VerticalStackLayout>
                             </Grid>
                         </Frame>

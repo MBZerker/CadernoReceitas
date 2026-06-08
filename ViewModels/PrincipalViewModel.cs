@@ -11,18 +11,16 @@ public sealed partial class PrincipalViewModel : BaseViewModel
 {
     private readonly AppDatabase database;
     private readonly UpdateService updateService;
-    private readonly ThemeService themeService;
 
     [ObservableProperty]
     private string status = string.Empty;
 
     public ObservableCollection<Caderno> Cadernos { get; } = new();
 
-    public PrincipalViewModel(AppDatabase database, UpdateService updateService, ThemeService themeService)
+    public PrincipalViewModel(AppDatabase database, UpdateService updateService)
     {
         this.database = database;
         this.updateService = updateService;
-        this.themeService = themeService;
         Title = "Principal";
     }
 
@@ -60,9 +58,6 @@ public sealed partial class PrincipalViewModel : BaseViewModel
 
     [RelayCommand]
     private Task TestesAsync() => Shell.Current.GoToAsync("quiz");
-
-    [RelayCommand]
-    private void AlternarTema() => themeService.ToggleTheme();
 
     [RelayCommand]
     private async Task CheckUpdatesAsync()

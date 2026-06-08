@@ -2,10 +2,10 @@ namespace CadernoReceitas;
 
 public partial class App : Application
 {
-    public App(Services.ThemeService themeService)
+    public App()
     {
         InitializeComponent();
-        themeService.ApplySavedTheme();
+        UserAppTheme = AppTheme.Light;
     }
 
     protected override Window CreateWindow(IActivationState? activationState)

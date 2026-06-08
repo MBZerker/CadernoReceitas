@@ -4,27 +4,27 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
 
-    <Color x:Key="DarkBg">#101820</Color>
-    <Color x:Key="DarkCard">#18232E</Color>
-    <Color x:Key="DarkLine">#314150</Color>
     <Color x:Key="RecipeRed">#B83216</Color>
     <Color x:Key="RecipeGold">#D99A3B</Color>
+    <Color x:Key="RecipePaper">#FFF9EC</Color>
+    <Color x:Key="RecipeCard">#FAFFF8</Color>
+    <Color x:Key="RecipeLine">#E8C98E</Color>
 
     <Style x:Key="PageTitle" TargetType="Label">
         <Setter Property="FontSize" Value="30" />
         <Setter Property="FontAttributes" Value="Bold" />
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource RecipeRed}, Dark=#FFE7B0}" />
+        <Setter Property="TextColor" Value="{StaticResource RecipeRed}" />
         <Setter Property="LineHeight" Value="1" />
     </Style>
 
     <Style x:Key="SectionTitle" TargetType="Label">
         <Setter Property="FontSize" Value="18" />
         <Setter Property="FontAttributes" Value="Bold" />
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Ink}, Dark=#F8FAFC}" />
+        <Setter Property="TextColor" Value="{StaticResource Ink}" />
     </Style>
 
     <Style x:Key="MutedText" TargetType="Label">
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Muted}, Dark=#B6C2CD}" />
+        <Setter Property="TextColor" Value="{StaticResource Muted}" />
         <Setter Property="FontSize" Value="13" />
     </Style>
 
@@ -32,38 +32,58 @@
         <Setter Property="CornerRadius" Value="18" />
         <Setter Property="Padding" Value="16" />
         <Setter Property="Margin" Value="0,0,0,12" />
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#FAFFF8, Dark={StaticResource DarkCard}}" />
-        <Setter Property="BorderColor" Value="{AppThemeBinding Light=#E8C98E, Dark={StaticResource DarkLine}}" />
+        <Setter Property="BackgroundColor" Value="{StaticResource RecipeCard}" />
+        <Setter Property="BorderColor" Value="{StaticResource RecipeLine}" />
         <Setter Property="HasShadow" Value="True" />
     </Style>
 
     <Style x:Key="ActionFrame" TargetType="Frame" BasedOn="{StaticResource CardFrame}">
         <Setter Property="Padding" Value="12" />
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#FFF7ED, Dark=#141E28}" />
+        <Setter Property="BackgroundColor" Value="#FFF7ED" />
     </Style>
 
     <Style x:Key="IconOnlyButton" TargetType="ImageButton">
-        <Setter Property="HeightRequest" Value="58" />
-        <Setter Property="WidthRequest" Value="58" />
+        <Setter Property="HeightRequest" Value="72" />
+        <Setter Property="WidthRequest" Value="72" />
+        <Setter Property="MinimumHeightRequest" Value="72" />
+        <Setter Property="MinimumWidthRequest" Value="72" />
         <Setter Property="Padding" Value="12" />
-        <Setter Property="CornerRadius" Value="18" />
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#FFFFFF, Dark=#22303D}" />
-        <Setter Property="BorderColor" Value="{AppThemeBinding Light=#E8C98E, Dark=#3B5061}" />
+        <Setter Property="CornerRadius" Value="20" />
+        <Setter Property="BackgroundColor" Value="#FFFFFF" />
+        <Setter Property="BorderColor" Value="{StaticResource RecipeLine}" />
         <Setter Property="BorderWidth" Value="1" />
         <Setter Property="Aspect" Value="AspectFit" />
     </Style>
 
+    <Style x:Key="PrimaryIconButton" TargetType="ImageButton" BasedOn="{StaticResource IconOnlyButton}">
+        <Setter Property="HeightRequest" Value="76" />
+        <Setter Property="WidthRequest" Value="76" />
+        <Setter Property="MinimumHeightRequest" Value="76" />
+        <Setter Property="MinimumWidthRequest" Value="76" />
+        <Setter Property="Padding" Value="10" />
+        <Setter Property="BackgroundColor" Value="#FFFFFF" />
+    </Style>
+
+    <Style x:Key="SmallIconButton" TargetType="ImageButton" BasedOn="{StaticResource IconOnlyButton}">
+        <Setter Property="HeightRequest" Value="52" />
+        <Setter Property="WidthRequest" Value="52" />
+        <Setter Property="MinimumHeightRequest" Value="52" />
+        <Setter Property="MinimumWidthRequest" Value="52" />
+        <Setter Property="Padding" Value="10" />
+        <Setter Property="CornerRadius" Value="16" />
+    </Style>
+
     <Style ApplyToDerivedTypes="True" TargetType="Page">
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#FFF9EC, Dark={StaticResource DarkBg}}" />
+        <Setter Property="BackgroundColor" Value="{StaticResource RecipePaper}" />
     </Style>
 
     <Style ApplyToDerivedTypes="True" TargetType="Shell">
-        <Setter Property="Shell.BackgroundColor" Value="{AppThemeBinding Light={StaticResource RecipeRed}, Dark=#101820}" />
+        <Setter Property="Shell.BackgroundColor" Value="{StaticResource RecipeRed}" />
         <Setter Property="Shell.ForegroundColor" Value="{StaticResource White}" />
         <Setter Property="Shell.TitleColor" Value="{StaticResource White}" />
-        <Setter Property="Shell.TabBarBackgroundColor" Value="{AppThemeBinding Light=#FFF7ED, Dark=#101820}" />
-        <Setter Property="Shell.TabBarForegroundColor" Value="{AppThemeBinding Light={StaticResource RecipeRed}, Dark=#FFE7B0}" />
-        <Setter Property="Shell.TabBarTitleColor" Value="{AppThemeBinding Light={StaticResource RecipeRed}, Dark=#FFE7B0}" />
-        <Setter Property="Shell.TabBarUnselectedColor" Value="{AppThemeBinding Light={StaticResource Muted}, Dark=#B6C2CD}" />
+        <Setter Property="Shell.TabBarBackgroundColor" Value="#FFF7ED" />
+        <Setter Property="Shell.TabBarForegroundColor" Value="{StaticResource RecipeRed}" />
+        <Setter Property="Shell.TabBarTitleColor" Value="{StaticResource RecipeRed}" />
+        <Setter Property="Shell.TabBarUnselectedColor" Value="{StaticResource Muted}" />
     </Style>
 </ResourceDictionary>

@@ -32,9 +32,17 @@ public sealed partial class ReceitaDetalheViewModel : BaseViewModel
     [ObservableProperty]
     private string ingredienteCategoria = string.Empty;
 
+    [ObservableProperty]
+    private Receita? receitaIngredienteSelecionada;
+
+    [ObservableProperty]
+    private string ingredienteVinculoResumo = "Opcional: selecione uma receita cadastrada para usar como ingrediente preparado.";
+
     public ObservableCollection<Ingrediente> Ingredientes { get; } = new();
 
     public ObservableCollection<string> Categorias { get; } = new();
+
+    public ObservableCollection<Receita> ReceitasParaVincular { get; } = new();
 
     public ReceitaDetalheViewModel(AppDatabase database)
     {
@@ -47,6 +55,26 @@ public sealed partial class ReceitaDetalheViewModel : BaseViewModel
         _ = LoadAsync();
     }
 
+    partial void OnReceitaIngredienteSelecionadaChanged(Receita? value)
+    {
+        if (value is null)
+        {
+            IngredienteVinculoResumo = "Opcional: selecione uma receita cadastrada para usar como ingrediente preparado.";
+            return;
+        }
+
+        IngredienteVinculoResumo = $"Vinculado a receita: {value.Nome}";
+        if (string.IsNullOrWhiteSpace(IngredienteNome))
+        {
+            IngredienteNome = value.Nome;
+        }
+
+        if (string.IsNullOrWhiteSpace(IngredienteCategoria))
+        {
+            IngredienteCategoria = "Receita preparada";
+        }
+    }
+
     [RelayCommand]
     private async Task LoadAsync()
     {
@@ -54,6 +82,7 @@ public sealed partial class ReceitaDetalheViewModel : BaseViewModel
         Receita = await database.GetReceitaAsync(ReceitaId);
         Nome = Receita?.Nome ?? "Receita";
         ModoPreparo = Receita?.ModoPreparo ?? string.Empty;
+
         Ingredientes.Clear();
         foreach (var item in await database.GetIngredientesAsync(ReceitaId))
         {
@@ -64,6 +93,12 @@ public sealed partial class ReceitaDetalheViewModel : BaseViewModel
         foreach (var item in await database.GetCategoriasIngredientesAsync())
         {
             Categorias.Add(item);
+        }
+
+        ReceitasParaVincular.Clear();
+        foreach (var item in await database.GetReceitasParaIngredienteAsync(ReceitaId))
+        {
+            ReceitasParaVincular.Add(item);
         }
     }
 
@@ -80,18 +115,40 @@ public sealed partial class ReceitaDetalheViewModel : BaseViewModel
     [RelayCommand]
     private async Task AdicionarIngredienteAsync()
     {
-        if (ReceitaId <= 0 || string.IsNullOrWhiteSpace(IngredienteNome)) return;
+        if (ReceitaId <= 0 || (string.IsNullOrWhiteSpace(IngredienteNome) && ReceitaIngredienteSelecionada is null)) return;
+
+        var receitaVinculada = ReceitaIngredienteSelecionada;
         await database.SaveAsync(new Ingrediente
         {
             ReceitaId = ReceitaId,
-            Nome = IngredienteNome.Trim(),
+            Nome = string.IsNullOrWhiteSpace(IngredienteNome) ? receitaVinculada?.Nome ?? string.Empty : IngredienteNome.Trim(),
             Quantidade = IngredienteQuantidade.Trim(),
-            Categoria = IngredienteCategoria.Trim()
+            Categoria = string.IsNullOrWhiteSpace(IngredienteCategoria) && receitaVinculada is not null ? "Receita preparada" : IngredienteCategoria.Trim(),
+            ReceitaIngredienteId = receitaVinculada?.Id ?? 0
         });
+
         IngredienteNome = string.Empty;
         IngredienteQuantidade = string.Empty;
         IngredienteCategoria = string.Empty;
+        ReceitaIngredienteSelecionada = null;
         await LoadAsync();
+    }
+
+    [RelayCommand]
+    private void LimparReceitaIngrediente()
+    {
+        ReceitaIngredienteSelecionada = null;
+    }
+
+    [RelayCommand]
+    private Task AbrirReceitaVinculadaAsync(Ingrediente ingrediente)
+    {
+        if (ingrediente.ReceitaIngredienteId <= 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        return Shell.Current.GoToAsync($"receitaDetalhe?receitaId={ingrediente.ReceitaIngredienteId}");
     }
 
     [RelayCommand]

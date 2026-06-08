@@ -16,4 +16,16 @@ public sealed class Ingrediente
 
     [Indexed]
     public string Categoria { get; set; } = string.Empty;
+
+    [Indexed]
+    public int ReceitaIngredienteId { get; set; }
+
+    [Ignore]
+    public string ReceitaIngredienteNome { get; set; } = string.Empty;
+
+    [Ignore]
+    public bool TemReceitaVinculada => ReceitaIngredienteId > 0;
+
+    [Ignore]
+    public string TipoIngrediente => TemReceitaVinculada ? "Receita preparada" : "Materia-prima";
 }

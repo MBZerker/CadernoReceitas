@@ -21,12 +21,12 @@ public sealed partial class CadernoViewModel : BaseViewModel
     private string descricaoCaderno = string.Empty;
 
     [ObservableProperty]
-    private string novaReceitaNome = string.Empty;
+    private string novoGrupoNome = string.Empty;
 
     [ObservableProperty]
-    private string novaReceitaPreparo = string.Empty;
+    private string novoGrupoDescricao = string.Empty;
 
-    public ObservableCollection<Receita> Receitas { get; } = new();
+    public ObservableCollection<GrupoReceitas> Grupos { get; } = new();
 
     public CadernoViewModel(AppDatabase database)
     {
@@ -40,38 +40,40 @@ public sealed partial class CadernoViewModel : BaseViewModel
     }
 
     [RelayCommand]
-    private async Task LoadAsync()
+    public async Task LoadAsync()
     {
         if (CadernoId <= 0) return;
         var caderno = await database.GetCadernoAsync(CadernoId);
         NomeCaderno = caderno?.Nome ?? "Caderno";
         DescricaoCaderno = caderno?.Descricao ?? string.Empty;
-        Receitas.Clear();
-        foreach (var item in await database.GetReceitasDoCadernoAsync(CadernoId))
+        Grupos.Clear();
+        foreach (var item in await database.GetGruposDoCadernoAsync(CadernoId))
         {
-            Receitas.Add(item);
+            Grupos.Add(item);
         }
     }
 
     [RelayCommand]
-    private async Task NovaReceitaAsync()
+    private async Task NovoGrupoAsync()
     {
-        if (CadernoId <= 0 || string.IsNullOrWhiteSpace(NovaReceitaNome)) return;
-        await database.SaveAsync(new Receita
+        if (CadernoId <= 0 || string.IsNullOrWhiteSpace(NovoGrupoNome)) return;
+        await database.SaveAsync(new GrupoReceitas
         {
             CadernoId = CadernoId,
-            Nome = NovaReceitaNome.Trim(),
-            ModoPreparo = NovaReceitaPreparo.Trim()
+            Nome = NovoGrupoNome.Trim(),
+            Descricao = NovoGrupoDescricao.Trim(),
+            CriadoEm = DateTime.Now
         });
-        NovaReceitaNome = string.Empty;
-        NovaReceitaPreparo = string.Empty;
+
+        NovoGrupoNome = string.Empty;
+        NovoGrupoDescricao = string.Empty;
         await LoadAsync();
     }
 
     [RelayCommand]
-    private Task AbrirReceitaAsync(Receita receita)
+    private Task AbrirGrupoAsync(GrupoReceitas grupo)
     {
-        return Shell.Current.GoToAsync($"receitaDetalhe?receitaId={receita.Id}");
+        return Shell.Current.GoToAsync($"grupo?grupoId={grupo.Id}");
     }
 
     [RelayCommand]

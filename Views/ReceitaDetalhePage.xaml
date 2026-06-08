@@ -7,14 +7,12 @@
     <ScrollView>
         <VerticalStackLayout Padding="16" Spacing="14">
             <Frame Style="{StaticResource CardFrame}">
-                <VerticalStackLayout Spacing="10">
-                    <Grid ColumnDefinitions="58,*" ColumnSpacing="14">
-                        <Image Source="icon_recipe" HeightRequest="50" WidthRequest="50" />
-                        <Entry Grid.Column="1" Placeholder="Nome da receita" Text="{Binding Nome}" FontSize="20" FontAttributes="Bold" />
-                    </Grid>
-                    <Editor Placeholder="Modo de preparo" AutoSize="TextChanges" HeightRequest="150" Text="{Binding ModoPreparo}" />
-                    <ImageButton Style="{StaticResource IconOnlyButton}" Source="icon_update" Command="{Binding SalvarReceitaCommand}" SemanticProperties.Description="Salvar receita" />
-                </VerticalStackLayout>
+                <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="58,*,Auto" RowSpacing="10" ColumnSpacing="14">
+                    <Image Source="icon_recipe" HeightRequest="50" WidthRequest="50" />
+                    <Entry Grid.Column="1" Placeholder="Nome da receita" Text="{Binding Nome}" FontSize="20" FontAttributes="Bold" />
+                    <ImageButton Grid.Column="2" Style="{StaticResource PrimaryIconButton}" Source="icon_save" Command="{Binding SalvarReceitaCommand}" SemanticProperties.Description="Salvar receita" />
+                    <Editor Grid.Row="1" Grid.ColumnSpan="3" Placeholder="Modo de preparo" AutoSize="TextChanges" HeightRequest="150" Text="{Binding ModoPreparo}" />
+                </Grid>
             </Frame>
 
             <Frame Style="{StaticResource CardFrame}">
@@ -24,7 +22,17 @@
                     <Entry Placeholder="Quantidade" Text="{Binding IngredienteQuantidade}" />
                     <Entry Placeholder="Categoria. Ex: gordura, laticinio, tempero" Text="{Binding IngredienteCategoria}" />
                     <Picker Title="Categorias ja usadas" ItemsSource="{Binding Categorias}" SelectedItem="{Binding IngredienteCategoria}" />
-                    <ImageButton Style="{StaticResource IconOnlyButton}" Source="icon_add" Command="{Binding AdicionarIngredienteCommand}" SemanticProperties.Description="Adicionar ingrediente" />
+
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                        <Picker Title="Vincular receita preparada" ItemsSource="{Binding ReceitasParaVincular}" SelectedItem="{Binding ReceitaIngredienteSelecionada}" ItemDisplayBinding="{Binding Nome}" />
+                        <ImageButton Grid.Column="1" Style="{StaticResource SmallIconButton}" Source="icon_delete" Command="{Binding LimparReceitaIngredienteCommand}" SemanticProperties.Description="Limpar receita vinculada" />
+                    </Grid>
+                    <Grid ColumnDefinitions="34,*" ColumnSpacing="10">
+                        <Image Source="icon_link" HeightRequest="28" WidthRequest="28" />
+                        <Label Grid.Column="1" Text="{Binding IngredienteVinculoResumo}" Style="{StaticResource MutedText}" />
+                    </Grid>
+
+                    <ImageButton HorizontalOptions="End" Style="{StaticResource PrimaryIconButton}" Source="icon_add" Command="{Binding AdicionarIngredienteCommand}" SemanticProperties.Description="Adicionar ingrediente" />
                 </VerticalStackLayout>
             </Frame>
 
@@ -37,14 +45,17 @@
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
                         <Frame Style="{StaticResource CardFrame}">
-                            <Grid ColumnDefinitions="52,*,Auto" ColumnSpacing="12">
+                            <Grid ColumnDefinitions="52,*,56,56" ColumnSpacing="12">
                                 <Image Source="icon_ingredient" HeightRequest="44" WidthRequest="44" />
                                 <VerticalStackLayout Grid.Column="1" Spacing="2">
-                                    <Label Text="{Binding Nome}" FontSize="17" FontAttributes="Bold" TextColor="{AppThemeBinding Light=#17212B, Dark=#F8FAFC}" />
+                                    <Label Text="{Binding Nome}" FontSize="17" FontAttributes="Bold" TextColor="{StaticResource Ink}" />
                                     <Label Text="{Binding Quantidade}" Style="{StaticResource MutedText}" />
-                                    <Label Text="{Binding Categoria}" TextColor="{AppThemeBinding Light=#B83216, Dark=#FFE7B0}" FontAttributes="Bold" />
+                                    <Label Text="{Binding Categoria}" TextColor="{StaticResource RecipeRed}" FontAttributes="Bold" />
+                                    <Label Text="{Binding TipoIngrediente}" Style="{StaticResource MutedText}" />
+                                    <Label Text="{Binding ReceitaIngredienteNome, StringFormat='Receita: {0}'}" IsVisible="{Binding TemReceitaVinculada}" TextColor="{StaticResource RecipeGold}" FontAttributes="Bold" />
                                 </VerticalStackLayout>
-                                <ImageButton Grid.Column="2" Style="{StaticResource IconOnlyButton}" Source="icon_update" Command="{Binding BindingContext.ExcluirIngredienteCommand, Source={x:Reference Page}}" CommandParameter="{Binding .}" SemanticProperties.Description="Excluir ingrediente" />
+                                <ImageButton Grid.Column="2" Style="{StaticResource SmallIconButton}" Source="icon_link" IsVisible="{Binding TemReceitaVinculada}" Command="{Binding BindingContext.AbrirReceitaVinculadaCommand, Source={x:Reference Page}}" CommandParameter="{Binding .}" SemanticProperties.Description="Abrir receita vinculada" />
+                                <ImageButton Grid.Column="3" Style="{StaticResource SmallIconButton}" Source="icon_delete" Command="{Binding BindingContext.ExcluirIngredienteCommand, Source={x:Reference Page}}" CommandParameter="{Binding .}" SemanticProperties.Description="Excluir ingrediente" />
                             </Grid>
                         </Frame>
                     </DataTemplate>
