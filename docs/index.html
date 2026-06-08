@@ -4,207 +4,76 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Caderno de Receitas</title>
-  <meta name="description" content="App Android offline para organizar cadernos, receitas, ingredientes e testes de aprendizagem.">
+  <meta name="description" content="App Android Java para organizar cadernos, categorias, receitas e ingredientes.">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Caderno de Receitas">
-  <meta property="og:description" content="App Android offline para organizar cadernos, receitas, ingredientes e testes de aprendizagem.">
+  <meta property="og:description" content="Organize receitas e ingredientes em um app Android leve.">
   <meta property="og:url" content="https://mbzerker.github.io/CadernoReceitas/">
-  <meta property="og:image" content="https://mbzerker.github.io/CadernoReceitas/logo-caderno.png">
-  <meta name="twitter:card" content="summary_large_image">
   <style>
     :root {
-      color-scheme: light dark;
       --paper: #fff7ed;
       --ink: #2f1b12;
       --muted: #765848;
-      --red: #b72b16;
-      --red-dark: #7f1d12;
-      --gold: #c98524;
-      --leaf: #4d7c0f;
+      --red: #b83216;
+      --dark: #7f1d12;
+      --gold: #d99a3b;
       --line: rgba(127, 29, 18, .18);
-      --veil: rgba(255, 247, 237, .84);
-      --glass: rgba(255, 255, 255, .72);
     }
-
     * { box-sizing: border-box; }
-
     body {
       margin: 0;
       min-height: 100vh;
       font-family: Arial, Helvetica, sans-serif;
       color: var(--ink);
-      background: #1c120d;
-    }
-
-    .hero {
-      min-height: 100vh;
+      background: linear-gradient(135deg, #fff9ec 0%, #f6d7aa 48%, #7f1d12 100%);
       display: grid;
       place-items: center;
       padding: 24px;
-      background:
-        linear-gradient(90deg, rgba(255, 247, 237, .95) 0%, var(--veil) 48%, rgba(255, 247, 237, .40) 100%),
-        url("splash-caderno.png") center right / cover no-repeat;
     }
-
-    .content {
-      width: min(1040px, 100%);
-      min-height: calc(100vh - 48px);
-      display: grid;
-      align-content: center;
-      gap: 22px;
+    main {
+      width: min(920px, 100%);
+      background: rgba(255, 249, 236, .86);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: clamp(22px, 5vw, 52px);
+      box-shadow: 0 24px 70px rgba(47, 27, 18, .25);
     }
-
-    .brand {
-      width: min(420px, 74vw);
-      height: auto;
-      display: block;
-      filter: drop-shadow(0 16px 30px rgba(88, 46, 21, .18));
-    }
-
     h1 {
-      max-width: 640px;
-      margin: 0;
-      color: var(--red-dark);
-      font-size: clamp(42px, 9vw, 82px);
-      line-height: .95;
-      letter-spacing: 0;
+      margin: 0 0 10px;
+      color: var(--dark);
+      font-size: clamp(38px, 8vw, 76px);
+      line-height: .96;
     }
-
     p {
-      max-width: 610px;
-      margin: 0;
+      max-width: 660px;
       color: var(--muted);
       font-size: 18px;
       line-height: 1.55;
     }
-
-    .actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      margin-top: 4px;
-    }
-
-    .button {
-      min-height: 52px;
+    a.button {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 14px 20px;
-      border: 1px solid transparent;
-      border-radius: 8px;
+      min-height: 54px;
+      padding: 14px 22px;
+      border-radius: 10px;
+      background: linear-gradient(180deg, #e9ae62 0%, var(--red) 100%);
+      color: white;
       text-decoration: none;
       font-weight: 800;
-      color: #fffaf3;
-      background: linear-gradient(180deg, #d54725 0%, var(--red) 100%);
-      box-shadow: 0 14px 30px rgba(127, 29, 18, .24);
+      box-shadow: 0 14px 30px rgba(127, 29, 18, .25);
+      margin: 8px 8px 8px 0;
     }
-
-    .button.secondary {
-      color: var(--red-dark);
-      background: var(--glass);
-      border-color: var(--line);
-      box-shadow: none;
-    }
-
-    .facts {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 10px;
-      max-width: 760px;
-      margin-top: 8px;
-    }
-
-    .fact {
-      min-height: 82px;
-      padding: 14px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--glass);
-      backdrop-filter: blur(12px);
-    }
-
-    .fact strong {
-      display: block;
-      color: var(--red-dark);
-      font-size: 14px;
-      margin-bottom: 6px;
-    }
-
-    .fact span {
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.35;
-    }
-
-    .version {
-      color: #6f4e37;
-      font-size: 13px;
-      font-weight: 700;
-    }
-
-    @media (max-width: 760px) {
-      .hero {
-        align-items: start;
-        background:
-          linear-gradient(180deg, rgba(255, 247, 237, .96) 0%, rgba(255, 247, 237, .88) 56%, rgba(255, 247, 237, .50) 100%),
-          url("splash-caderno.png") center bottom / cover no-repeat;
-      }
-
-      .content {
-        min-height: calc(100vh - 48px);
-        align-content: start;
-        padding-top: 18px;
-      }
-
-      .brand { width: min(330px, 86vw); }
-      h1 { font-size: clamp(38px, 13vw, 60px); }
-      p { font-size: 16px; }
-      .actions { display: grid; grid-template-columns: 1fr; }
-      .facts { grid-template-columns: 1fr 1fr; }
-    }
-
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --ink: #fff7ed;
-        --muted: #f5d8c2;
-        --veil: rgba(38, 21, 15, .80);
-        --glass: rgba(49, 28, 20, .76);
-        --line: rgba(249, 213, 168, .24);
-      }
-
-      .hero {
-        background:
-          linear-gradient(90deg, rgba(30, 18, 13, .96) 0%, var(--veil) 48%, rgba(30, 18, 13, .38) 100%),
-          url("splash-caderno.png") center right / cover no-repeat;
-      }
-
-      h1, .fact strong, .button.secondary { color: #ffd29a; }
-      .version { color: #f5d8c2; }
-    }
+    .meta { color: #6f4e37; font-weight: 700; font-size: 13px; margin-top: 18px; }
   </style>
 </head>
 <body>
-  <main class="hero">
-    <section class="content" aria-label="Download do Caderno de Receitas">
-      <img class="brand" src="logo-caderno.png" alt="Caderno de Receitas">
-      <h1>Caderno de Receitas</h1>
-      <p>Organize cadernos, grupos, receitas, ingredientes por categoria e testes de aprendizagem em um app Android offline, feito para uso direto na rotina de cozinha.</p>
-
-      <div class="actions">
-        <a class="button" href="CadernoReceitas.apk">Baixar APK 0.4.0</a>
-        <a class="button secondary" href="update.json">Ver manifesto de update</a>
-      </div>
-
-      <div class="facts" aria-label="Recursos principais">
-        <div class="fact"><strong>Principal</strong><span>Logo, atalhos por icone e cadernos criados.</span></div>
-        <div class="fact"><strong>Grupos</strong><span>Cada caderno organiza receitas em grupos internos.</span></div>
-        <div class="fact"><strong>Ingredientes</strong><span>Materia-prima ou receita preparada vinculada.</span></div>
-        <div class="fact"><strong>Update</strong><span>Verificacao por manifesto publicado no GitHub.</span></div>
-      </div>
-
-      <div class="version">Versao 0.4.0 - APK 53,1 MB - SHA-256 publicado no update.json</div>
-    </section>
+  <main>
+    <h1>Caderno de Receitas</h1>
+    <p>Versão Android Java pura, mais leve e direta, com cadernos, categorias, receitas, ingredientes, pesquisa e atualização pelo próprio app.</p>
+    <a class="button" href="CadernoReceitas.apk">Baixar APK 0.5.0 Java</a>
+    <a class="button" href="update.json">Ver manifesto de update</a>
+    <div class="meta">APK 17,8 MB - assinatura compatível com a versão anterior - SHA-256 publicado no update.json</div>
   </main>
 </body>
 </html>

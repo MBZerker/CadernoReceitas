@@ -1,12 +1,12 @@
 {
-  "versionCode": 4,
-  "versionName": "0.4.0",
+  "versionCode": 5,
+  "versionName": "0.5.0-java",
   "critical": false,
   "pageUrl": "https://mbzerker.github.io/CadernoReceitas/",
-  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.4.0.apk",
-  "sha256": "4C8CEAF6A03820474D2B7E671F271A81C7F97618570B66D237806E91CEF996C8",
-  "sizeBytes": 53122619,
-  "signatureSha256": "",
+  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.5.0-java.apk",
+  "sha256": "7385347D73D138ADE682F7930261D1D2B0DD02E5F3ED2561A9DA1AD9D534FEF4",
+  "sizeBytes": 17773553,
+  "signatureSha256": "f8dec9a06ec4eaf93a1a9b7f5b5cf73490d54d227f0ee172f83177557c79bfe8",
   "origin": "GitHub Pages oficial do Caderno de Receitas",
-  "changelog": "Splash Android em tela cheia, fundos de tela, frames translucidos, pesquisa por tela, menus de editar/excluir, autocomplete de ingredientes e atualizacao com download e barra de progresso."
+  "changelog": "Migração para Android Java puro: app mais leve, splash em tela cheia, CRUD de cadernos/categorias/receitas/ingredientes, pesquisa, menus, ingredientes vinculados a receitas e atualização pelo próprio app."
 }

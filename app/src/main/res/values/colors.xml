@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="recipe_red">#B83216</color>
+    <color name="recipe_gold">#D99A3B</color>
+    <color name="recipe_paper">#FFF9EC</color>
+    <color name="recipe_ink">#2F1B12</color>
+    <color name="recipe_muted">#765848</color>
+</resources>

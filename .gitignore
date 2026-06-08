@@ -1,22 +1,5 @@
-bin/
-obj/
-.vs/
-.vscode/
-.idea/
-*.user
-*.suo
-*.userosscache
-*.sln.docstates
-*.log
-local.properties
-*.aab
-
-# Android signing secrets
-*.keystore
-*.jks
+.gradle/
+build/
+app/build/
+CadernoReceitasJava-debug.apk
 keystore.properties
-
-# Local OS/editor noise
-Thumbs.db
-Desktop.ini
-.DS_Store

@@ -1,0 +1,961 @@
+package com.mbzerker.cadernoreceitas;
+
+import android.app.*;
+import android.os.*;
+import android.content.*;
+import android.database.Cursor;
+import android.database.sqlite.*;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.LayerDrawable;
+import android.net.Uri;
+import android.provider.Settings;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.view.*;
+import android.widget.*;
+
+import androidx.core.content.FileProvider;
+
+import org.json.JSONObject;
+
+import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.security.MessageDigest;
+import java.text.Normalizer;
+import java.util.*;
+
+public class MainActivity extends Activity {
+    private static final String UPDATE_URL = "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/update.json";
+    private static final int RED = Color.rgb(184, 50, 22);
+    private static final int RED_DARK = Color.rgb(127, 29, 18);
+    private static final int GOLD = Color.rgb(217, 154, 59);
+    private static final int PAPER = Color.rgb(255, 247, 237);
+    private static final int INK = Color.rgb(47, 27, 18);
+    private static final int MUTED = Color.rgb(118, 88, 72);
+    private static final int CARD = Color.argb(224, 255, 249, 236);
+    private static final int CARD_STRONG = Color.argb(242, 255, 247, 237);
+    private static final int LINE = Color.rgb(232, 201, 142);
+    private static final int LINK = Color.rgb(53, 99, 199);
+
+    private Db db;
+    private LinearLayout root;
+    private LinearLayout listArea;
+    private EditText search;
+    private int currentCadernoId;
+    private int currentCategoriaId;
+    private int currentReceitaId;
+    private String screen = "home";
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        configureSystemBars();
+        db = new Db(this);
+        db.getWritableDatabase();
+        showSplash();
+    }
+
+    private void showSplash() {
+        ImageView splash = new ImageView(this);
+        splash.setImageResource(R.drawable.splash_full);
+        splash.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        setContentView(splash);
+        new Handler(Looper.getMainLooper()).postDelayed(this::showHome, 1800);
+    }
+
+    private void base(int background) {
+        configureSystemBars();
+        FrameLayout frame = new FrameLayout(this);
+        ImageView bg = new ImageView(this);
+        bg.setImageResource(background);
+        bg.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        frame.addView(bg, new FrameLayout.LayoutParams(-1, -1));
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(false);
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(16), statusBarHeight() + dp(14), dp(16), dp(24));
+        scroll.addView(root);
+        frame.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
+        setContentView(frame);
+    }
+
+    private void showHome() {
+        screen = "home";
+        currentCadernoId = 0;
+        base(R.drawable.bg_principal);
+
+        LinearLayout logoFrame = logoCard();
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.drawable.logo_caderno);
+        logo.setAdjustViewBounds(true);
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        logoFrame.addView(logo, new LinearLayout.LayoutParams(-1, dp(120)));
+        root.addView(logoFrame);
+
+        LinearLayout actions = card();
+        TextView title = label("▣ Caderno de Receitas", 26, RED, true);
+        actions.addView(title);
+        TextView sub = label("🍽 Organize cadernos, categorias, receitas e ingredientes.", 14, MUTED, false);
+        actions.addView(sub);
+        LinearLayout row = hrow();
+        row.addView(iconButton("+", "Novo caderno", v -> newCaderno()), weight());
+        row.addView(iconButton("?", "Teste", v -> toast("Teste mantido para migracao futura.")), weight());
+        row.addView(iconButton("U", "Atualizar", v -> checkUpdate()), weight());
+        actions.addView(row);
+        root.addView(actions);
+
+        addSearch("Pesquisar cadernos", this::renderHomeList);
+        listArea = new LinearLayout(this);
+        listArea.setOrientation(LinearLayout.VERTICAL);
+        root.addView(listArea);
+        renderHomeList();
+    }
+
+    private void renderHomeList() {
+        listArea.removeAllViews();
+        List<Item> items = db.cadernos(text(search));
+        if (items.isEmpty()) {
+            listArea.addView(empty("Nenhum caderno criado.", "Toque em + para criar o primeiro caderno."));
+            return;
+        }
+        for (Item c : items) {
+            LinearLayout card = itemCard("C", c.name, c.desc, db.countReceitasCaderno(c.id) + " receitas", () -> showCaderno(c.id));
+            card.setOnLongClickListener(v -> { menuCaderno(c); return true; });
+            addMenuButton(card, () -> menuCaderno(c));
+            listArea.addView(card);
+        }
+    }
+
+    private void showCaderno(int id) {
+        screen = "caderno";
+        currentCadernoId = id;
+        Item caderno = db.get("cadernos", id);
+        base(R.drawable.bg_caderno);
+        root.addView(header("C", caderno.name, caderno.desc, this::showHome));
+
+        LinearLayout add = card();
+        add.addView(label("▤ Categoria", 20, INK, true));
+        add.addView(label("✦ Crie categorias para separar massas, doces, molhos e outros preparos.", 14, MUTED, false));
+        add.addView(iconButton("+", "Adicionar categoria", v -> newCategoria()));
+        root.addView(add);
+
+        addSearch("Pesquisar categorias", this::renderCategorias);
+        listArea = new LinearLayout(this);
+        listArea.setOrientation(LinearLayout.VERTICAL);
+        root.addView(listArea);
+        renderCategorias();
+    }
+
+    private void renderCategorias() {
+        listArea.removeAllViews();
+        List<Item> items = db.categorias(currentCadernoId, text(search));
+        if (items.isEmpty()) {
+            listArea.addView(empty("Nenhuma categoria.", "Crie uma categoria para organizar receitas."));
+            return;
+        }
+        for (Item item : items) {
+            LinearLayout card = itemCard("G", item.name, item.desc, db.countReceitasCategoria(item.id) + " receitas", () -> showCategoria(item.id));
+            card.setOnLongClickListener(v -> { menuCategoria(item); return true; });
+            addMenuButton(card, () -> menuCategoria(item));
+            listArea.addView(card);
+        }
+    }
+
+    private void showCategoria(int id) {
+        screen = "categoria";
+        currentCategoriaId = id;
+        Item cat = db.get("categorias", id);
+        currentCadernoId = cat.parentId;
+        base(R.drawable.bg_receitas);
+        root.addView(header("G", cat.name, cat.desc, () -> showCaderno(currentCadernoId)));
+
+        LinearLayout add = card();
+        add.addView(label("□ Receita", 20, INK, true));
+        add.addView(label("✦ Cadastre receitas desta categoria.", 14, MUTED, false));
+        add.addView(iconButton("+", "Adicionar receita", v -> newReceita()));
+        root.addView(add);
+
+        addSearch("Pesquisar receitas", this::renderReceitas);
+        listArea = new LinearLayout(this);
+        listArea.setOrientation(LinearLayout.VERTICAL);
+        root.addView(listArea);
+        renderReceitas();
+    }
+
+    private void renderReceitas() {
+        listArea.removeAllViews();
+        List<Item> items = db.receitas(currentCategoriaId, text(search));
+        if (items.isEmpty()) {
+            listArea.addView(empty("Nenhuma receita.", "Adicione a primeira receita desta categoria."));
+            return;
+        }
+        for (Item item : items) {
+            LinearLayout card = itemCard("R", item.name, item.desc, db.countIngredientes(item.id) + " ingredientes", () -> showReceita(item.id));
+            card.setOnLongClickListener(v -> { menuReceita(item); return true; });
+            addMenuButton(card, () -> menuReceita(item));
+            listArea.addView(card);
+        }
+    }
+
+    private void showReceita(int id) {
+        screen = "receita";
+        currentReceitaId = id;
+        Item receita = db.getReceita(id);
+        currentCategoriaId = receita.parentId;
+        currentCadernoId = receita.cadernoId;
+        base(R.drawable.bg_ingredientes);
+
+        root.addView(header("R", receita.name, "Toque em editar para alterar nome e preparo.", () -> showCategoria(currentCategoriaId)));
+
+        LinearLayout preparoCard = card();
+        preparoCard.addView(label("☰ Modo de preparo", 20, INK, true));
+        preparoCard.addView(label(receita.desc.isEmpty() ? "Nenhum modo de preparo cadastrado." : receita.desc, 15, INK, false));
+        preparoCard.addView(iconButton("S", "Editar receita", v -> editReceita(receita)));
+        root.addView(preparoCard);
+
+        LinearLayout ingredientActions = card();
+        ingredientActions.addView(label("• Ingredientes", 20, INK, true));
+        ingredientActions.addView(label("✦ Adicione matéria-prima ou vincule outra receita como preparo base.", 14, MUTED, false));
+        ingredientActions.addView(iconButton("+", "Adicionar ingrediente", v -> newIngrediente()));
+        root.addView(ingredientActions);
+
+        addSearch("Pesquisar ingredientes", this::renderIngredientes);
+        listArea = new LinearLayout(this);
+        listArea.setOrientation(LinearLayout.VERTICAL);
+        root.addView(listArea);
+        renderIngredientes();
+    }
+
+    private void renderIngredientes() {
+        listArea.removeAllViews();
+        List<Item> items = db.ingredientes(currentReceitaId, text(search));
+        if (items.isEmpty()) {
+            listArea.addView(empty("Nenhum ingrediente.", "Cadastre os ingredientes desta receita."));
+            return;
+        }
+        for (Item item : items) {
+            LinearLayout card = itemCard(item.recipeLinkId > 0 ? "R" : "-", item.name, item.desc, item.extra, item.recipeLinkId > 0 ? () -> showReceita(item.recipeLinkId) : null);
+            if (item.recipeLinkId > 0) {
+                markLinkedIngredient(card);
+            }
+            card.setOnLongClickListener(v -> { menuIngrediente(item); return true; });
+            addMenuButton(card, () -> menuIngrediente(item));
+            listArea.addView(card);
+        }
+    }
+
+    private void newCaderno() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(8), 0, dp(8), 0);
+        AutoCompleteTextView nome = autoEntry("Nome do caderno", db.cadernoNames());
+        EditText desc = entry("Descricao curta", "");
+        box.addView(nome);
+        box.addView(desc);
+        new AlertDialog.Builder(this)
+            .setTitle("Novo caderno")
+            .setView(box)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Salvar", (d, w) -> {
+                if (blank(nome)) return;
+                db.saveCaderno(0, text(nome), text(desc));
+                renderHomeList();
+            })
+            .show();
+    }
+
+    private void newCategoria() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(8), 0, dp(8), 0);
+        EditText nome = entry("Nome da categoria", "");
+        EditText desc = entry("Descricao curta", "");
+        box.addView(nome);
+        box.addView(desc);
+        new AlertDialog.Builder(this)
+            .setTitle("Nova categoria")
+            .setView(box)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Salvar", (d, w) -> {
+                if (blank(nome)) return;
+                db.saveCategoria(0, currentCadernoId, text(nome), text(desc));
+                renderCategorias();
+            })
+            .show();
+    }
+
+    private void newReceita() {
+        LinearLayout box = themedDialogBox();
+        EditText nome = entry("Nome da receita", "");
+        EditText preparo = entry("Modo de preparo inicial", "");
+        preparo.setMinLines(3);
+        box.addView(nome);
+        box.addView(preparo);
+        themedDialog("Nova receita", box)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Salvar", (d, w) -> {
+                if (blank(nome)) return;
+                db.saveReceita(0, currentCadernoId, currentCategoriaId, text(nome), text(preparo));
+                renderReceitas();
+            })
+            .show();
+    }
+
+    private void newIngrediente() {
+        showIngredientDialog("Novo ingrediente", null);
+    }
+
+    private void menuCaderno(Item item) {
+        actions(item.name, new String[]{"Editar", "Excluir"}, which -> {
+            if (which == 0) editCaderno(item);
+            if (which == 1) confirm("Excluir caderno", "Excluir este caderno e todo o conteudo?", () -> { db.deleteCaderno(item.id); renderHomeList(); });
+        });
+    }
+
+    private void menuCategoria(Item item) {
+        actions(item.name, new String[]{"Editar", "Excluir"}, which -> {
+            if (which == 0) editCategoria(item);
+            if (which == 1) confirm("Excluir categoria", "Excluir esta categoria e suas receitas?", () -> { db.deleteCategoria(item.id); renderCategorias(); });
+        });
+    }
+
+    private void menuReceita(Item item) {
+        actions(item.name, new String[]{"Editar", "Excluir"}, which -> {
+            if (which == 0) editReceita(item);
+            if (which == 1) confirm("Excluir receita", "Excluir esta receita e seus ingredientes?", () -> { db.deleteReceita(item.id); renderReceitas(); });
+        });
+    }
+
+    private void menuIngrediente(Item item) {
+        actions(item.name, new String[]{"Editar", "Excluir"}, which -> {
+            if (which == 0) editIngrediente(item);
+            if (which == 1) confirm("Excluir ingrediente", "Excluir este ingrediente?", () -> { db.delete("ingredientes", item.id); renderIngredientes(); });
+        });
+    }
+
+    private void editCaderno(Item item) {
+        editTwo("Editar caderno", "Nome", item.name, "Descricao", item.desc, (a, b) -> {
+            db.saveCaderno(item.id, a, b);
+            renderHomeList();
+        });
+    }
+
+    private void editCategoria(Item item) {
+        editTwo("Editar categoria", "Nome", item.name, "Descricao", item.desc, (a, b) -> {
+            db.saveCategoria(item.id, currentCadernoId, a, b);
+            renderCategorias();
+        });
+    }
+
+    private void editReceita(Item item) {
+        editTwo("Editar receita", "Nome", item.name, "Modo de preparo", item.desc, (a, b) -> {
+            db.saveReceita(item.id, currentCadernoId, currentCategoriaId, a, b);
+            if ("receita".equals(screen)) showReceita(item.id);
+            else renderReceitas();
+        });
+    }
+
+    private void editIngrediente(Item item) {
+        showIngredientDialog("Editar ingrediente", item);
+    }
+
+    private void showIngredientDialog(String title, Item item) {
+        LinearLayout box = themedDialogBox();
+        AutoCompleteTextView nome = autoEntry("Nome do ingrediente", db.ingredientNames());
+        EditText qtd = entry("Quantidade", "");
+        AutoCompleteTextView cat = autoEntry("Categoria", db.ingredientCategories());
+        Spinner receitaSpinner = new Spinner(this);
+        List<Item> receitas = db.receitasParaVincular(currentReceitaId);
+        ArrayList<String> nomesReceitas = new ArrayList<>();
+        nomesReceitas.add("Não vincular receita preparada");
+        int selected = 0;
+        for (int i = 0; i < receitas.size(); i++) {
+            nomesReceitas.add(receitas.get(i).name);
+            if (item != null && item.recipeLinkId == receitas.get(i).id) selected = i + 1;
+        }
+        receitaSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, nomesReceitas));
+        receitaSpinner.setSelection(selected);
+        if (item != null) {
+            nome.setText(item.name);
+            qtd.setText(item.desc);
+            cat.setText(item.extra);
+        }
+        receitaSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                if (position > 0 && nome.getText().toString().trim().isEmpty()) {
+                    nome.setText(receitas.get(position - 1).name);
+                }
+                if (position > 0 && cat.getText().toString().trim().isEmpty()) {
+                    cat.setText("Receita preparada");
+                }
+            }
+            public void onNothingSelected(android.widget.AdapterView<?> parent) {}
+        });
+        box.addView(nome);
+        box.addView(qtd);
+        box.addView(cat);
+        box.addView(label("Vincular receita preparada", 14, MUTED, true));
+        box.addView(receitaSpinner);
+        themedDialog(title, box)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Salvar", (d, w) -> {
+                if (blank(nome)) return;
+                int recipeLink = receitaSpinner.getSelectedItemPosition() > 0 ? receitas.get(receitaSpinner.getSelectedItemPosition() - 1).id : 0;
+                db.saveIngrediente(item == null ? 0 : item.id, currentReceitaId, text(nome), text(qtd), text(cat), recipeLink);
+                renderIngredientes();
+            })
+            .show();
+    }
+
+    private void checkUpdate() {
+        ProgressDialog dialog = new ProgressDialog(this);
+        dialog.setMessage("Verificando atualizacao...");
+        dialog.setIndeterminate(true);
+        dialog.show();
+        new Thread(() -> {
+            try {
+                JSONObject json = new JSONObject(readUrl(UPDATE_URL));
+                int remote = json.optInt("versionCode", 0);
+                String version = json.optString("versionName", "");
+                if (remote <= BuildConfig.VERSION_CODE) {
+                    ui(() -> { dialog.dismiss(); toast("Sem atualizacao disponivel."); });
+                    return;
+                }
+                ui(() -> {
+                    dialog.dismiss();
+                    confirm("Atualizacao disponivel", "Baixar versao " + version + " agora?", () -> downloadApk(json));
+                });
+            } catch (Exception e) {
+                ui(() -> { dialog.dismiss(); toast("Falha ao verificar atualizacao."); });
+            }
+        }).start();
+    }
+
+    private void downloadApk(JSONObject manifest) {
+        ProgressDialog dialog = new ProgressDialog(this);
+        dialog.setTitle("Baixando atualizacao");
+        dialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+        dialog.setMax(100);
+        dialog.show();
+        new Thread(() -> {
+            try {
+                String apkUrl = manifest.getString("apkUrl");
+                String expected = manifest.optString("sha256", "");
+                File out = new File(getExternalCacheDir(), "CadernoReceitas-update.apk");
+                URL url = new URL(apkUrl);
+                HttpURLConnection con = (HttpURLConnection) url.openConnection();
+                con.connect();
+                int total = Math.max(1, con.getContentLength());
+                MessageDigest sha = MessageDigest.getInstance("SHA-256");
+                try (InputStream in = con.getInputStream(); OutputStream os = new FileOutputStream(out)) {
+                    byte[] buffer = new byte[96 * 1024];
+                    int read;
+                    long done = 0;
+                    while ((read = in.read(buffer)) >= 0) {
+                        os.write(buffer, 0, read);
+                        sha.update(buffer, 0, read);
+                        done += read;
+                        int progress = (int) Math.min(100, (done * 100) / total);
+                        ui(() -> dialog.setProgress(progress));
+                    }
+                }
+                String hash = bytesToHex(sha.digest());
+                if (!expected.isEmpty() && !hash.equalsIgnoreCase(expected)) {
+                    throw new IOException("SHA-256 diferente do manifesto.");
+                }
+                ui(() -> { dialog.dismiss(); openApk(out); });
+            } catch (Exception e) {
+                ui(() -> { dialog.dismiss(); toast("Falha ao baixar atualizacao."); });
+            }
+        }).start();
+    }
+
+    private void openApk(File file) {
+        try {
+            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(uri, "application/vnd.android.package-archive");
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+        } catch (Exception e) {
+            Intent settings = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));
+            startActivity(settings);
+        }
+    }
+
+    private LinearLayout header(String icon, String title, String subtitle, Runnable back) {
+        LinearLayout box = card();
+        box.addView(headerInline(icon, title, back));
+        if (!subtitle.isEmpty()) box.addView(label(subtitle, 14, MUTED, false));
+        return box;
+    }
+
+    private void markLinkedIngredient(LinearLayout card) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.argb(235, 245, 250, 255));
+        bg.setStroke(dp(1), LINK);
+        bg.setCornerRadius(dp(18));
+        card.setBackground(bg);
+    }
+
+    private LinearLayout headerInline(String icon, String title, Runnable back) {
+        LinearLayout row = hrow();
+        row.addView(iconButton("<", "Voltar", v -> back.run()), new LinearLayout.LayoutParams(dp(56), dp(56)));
+        TextView iconView = label(icon, 28, GOLD, true);
+        iconView.setGravity(Gravity.CENTER);
+        row.addView(iconView, new LinearLayout.LayoutParams(dp(48), dp(56)));
+        row.addView(label(title, 24, RED, true), weight());
+        return row;
+    }
+
+    private LinearLayout itemCard(String icon, String title, String subtitle, String extra, Runnable tap) {
+        LinearLayout box = card();
+        box.setPadding(dp(12), dp(12), dp(12), dp(12));
+        LinearLayout row = hrow();
+        TextView iconText = label(icon, 26, RED, true);
+        iconText.setGravity(Gravity.CENTER);
+        row.addView(iconText, new LinearLayout.LayoutParams(dp(48), -1));
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        text.addView(label(title, 18, INK, true));
+        if (!subtitle.isEmpty()) text.addView(label(subtitle, 14, MUTED, false));
+        if (!extra.isEmpty()) text.addView(label(extra, 14, RED, true));
+        row.addView(text, weight());
+        box.addView(row);
+        if (tap != null) box.setOnClickListener(v -> tap.run());
+        return box;
+    }
+
+    private void addMenuButton(LinearLayout card, Runnable action) {
+        LinearLayout row = (LinearLayout) card.getChildAt(0);
+        TextView menu = label("...", 22, RED, true);
+        menu.setGravity(Gravity.CENTER);
+        menu.setOnClickListener(v -> action.run());
+        row.addView(menu, new LinearLayout.LayoutParams(dp(42), -1));
+    }
+
+    private LinearLayout empty(String title, String subtitle) {
+        LinearLayout box = card();
+        box.addView(label(title, 20, INK, true));
+        box.addView(label(subtitle, 15, MUTED, false));
+        return box;
+    }
+
+    private LinearLayout card() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(16), dp(16), dp(16), dp(16));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, 0, 0, dp(12));
+        box.setLayoutParams(lp);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(CARD);
+        bg.setStroke(dp(1), LINE);
+        bg.setCornerRadius(dp(18));
+        box.setBackground(bg);
+        box.setElevation(dp(3));
+        return box;
+    }
+
+    private LinearLayout logoCard() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(10), dp(10), dp(10), dp(10));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, 0, 0, dp(12));
+        box.setLayoutParams(lp);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(PAPER);
+        bg.setStroke(dp(1), Color.argb(90, 232, 201, 142));
+        bg.setCornerRadius(dp(22));
+        box.setBackground(bg);
+        box.setElevation(dp(4));
+        return box;
+    }
+
+    private TextView label(String text, int sp, int color, boolean bold) {
+        TextView v = new TextView(this);
+        v.setText(text == null ? "" : text);
+        v.setTextSize(sp);
+        v.setTextColor(color);
+        v.setIncludeFontPadding(true);
+        if (bold) v.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        return v;
+    }
+
+    private LinearLayout themedDialogBox() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(8), dp(8), dp(8), 0);
+        return box;
+    }
+
+    private AlertDialog.Builder themedDialog(String title, View view) {
+        return new AlertDialog.Builder(this)
+            .setTitle(title)
+            .setView(view);
+    }
+
+    private EditText entry(String hint, String value) {
+        EditText e = new EditText(this);
+        e.setHint(hint);
+        e.setText(value);
+        e.setSingleLine(false);
+        e.setTextColor(INK);
+        e.setHintTextColor(MUTED);
+        e.setSelectAllOnFocus(true);
+        e.setPadding(dp(12), dp(8), dp(12), dp(8));
+        e.setBackgroundColor(CARD_STRONG);
+        return e;
+    }
+
+    private AutoCompleteTextView autoEntry(String hint, List<String> values) {
+        AutoCompleteTextView e = new AutoCompleteTextView(this);
+        e.setHint(hint);
+        e.setTextColor(INK);
+        e.setHintTextColor(MUTED);
+        e.setThreshold(1);
+        e.setSelectAllOnFocus(true);
+        e.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_dropdown_item_1line, values));
+        e.setPadding(dp(12), dp(8), dp(12), dp(8));
+        e.setBackgroundColor(CARD_STRONG);
+        return e;
+    }
+
+    private TextView iconButton(String text, String desc, View.OnClickListener listener) {
+        TextView b = new TextView(this);
+        b.setText(text);
+        b.setGravity(Gravity.CENTER);
+        b.setTextSize(22);
+        b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        b.setContentDescription(desc);
+        b.setTextColor(Color.WHITE);
+        GradientDrawable base = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.rgb(255, 209, 139), Color.rgb(196, 68, 32)});
+        base.setCornerRadius(dp(20));
+        base.setStroke(dp(1), Color.argb(170, 255, 236, 196));
+        GradientDrawable shine = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.argb(110, 255, 255, 255), Color.TRANSPARENT});
+        shine.setCornerRadius(dp(20));
+        b.setBackground(new LayerDrawable(new android.graphics.drawable.Drawable[]{base, shine}));
+        b.setElevation(dp(3));
+        b.setOnClickListener(listener);
+        return b;
+    }
+
+    private LinearLayout hrow() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(6), 0, 0);
+        return row;
+    }
+
+    private void addSearch(String hint, Runnable callback) {
+        search = entry(hint, "");
+        search.setSingleLine(true);
+        search.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            public void afterTextChanged(Editable s) { callback.run(); }
+        });
+        root.addView(search, new LinearLayout.LayoutParams(-1, dp(56)));
+    }
+
+    private LinearLayout.LayoutParams weight() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(64), 1);
+        lp.setMargins(dp(4), dp(8), dp(4), 0);
+        return lp;
+    }
+
+    private void configureSystemBars() {
+        Window window = getWindow();
+        window.setStatusBarColor(RED_DARK);
+        window.setNavigationBarColor(PAPER);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            window.getDecorView().setSystemUiVisibility(0);
+        }
+    }
+
+    private int statusBarHeight() {
+        int id = getResources().getIdentifier("status_bar_height", "dimen", "android");
+        return id > 0 ? getResources().getDimensionPixelSize(id) : dp(24);
+    }
+
+    private void actions(String title, String[] items, Choice choice) {
+        AlertDialog dialog = themedDialog(title, null)
+            .setItems(items, (d, which) -> choice.pick(which))
+            .create();
+        dialog.setOnShowListener(d -> styleDialogWindow(dialog));
+        dialog.show();
+    }
+
+    private void editTwo(String title, String h1, String v1, String h2, String v2, SaveTwo save) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        EditText a = entry(h1, v1);
+        EditText b = entry(h2, v2);
+        box.addView(a);
+        box.addView(b);
+        themedDialog(title, box)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Salvar", (d, w) -> {
+                if (blank(a)) return;
+                save.save(text(a), text(b));
+            }).show();
+    }
+
+    private void confirm(String title, String message, Runnable yes) {
+        AlertDialog dialog = themedDialog(title, null)
+            .setMessage(message)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("OK", (d, w) -> yes.run())
+            .create();
+        dialog.setOnShowListener(d -> styleDialogWindow(dialog));
+        dialog.show();
+    }
+
+    private void styleDialogWindow(AlertDialog dialog) {
+        Window window = dialog.getWindow();
+        if (window == null) return;
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(PAPER);
+        bg.setStroke(dp(1), LINE);
+        bg.setCornerRadius(dp(18));
+        window.setBackgroundDrawable(bg);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if ("receita".equals(screen)) showCategoria(currentCategoriaId);
+        else if ("categoria".equals(screen)) showCaderno(currentCadernoId);
+        else if ("caderno".equals(screen)) showHome();
+        else super.onBackPressed();
+    }
+
+    private String readUrl(String value) throws IOException {
+        HttpURLConnection con = (HttpURLConnection) new URL(value).openConnection();
+        con.setConnectTimeout(12000);
+        con.setReadTimeout(12000);
+        try (InputStream in = con.getInputStream()) {
+            return new String(readAll(in), "UTF-8");
+        }
+    }
+
+    private byte[] readAll(InputStream in) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int read;
+        while ((read = in.read(buffer)) >= 0) out.write(buffer, 0, read);
+        return out.toByteArray();
+    }
+
+    private String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) sb.append(String.format(Locale.US, "%02X", b));
+        return sb.toString();
+    }
+
+    private void ui(Runnable r) { runOnUiThread(r); }
+    private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_SHORT).show(); }
+    private int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density + 0.5f); }
+    private boolean blank(TextView v) { return text(v).isEmpty(); }
+    private String text(TextView v) { return v == null ? "" : v.getText().toString().trim(); }
+    private String norm(String s) {
+        String n = Normalizer.normalize(s == null ? "" : s, Normalizer.Form.NFD);
+        return n.replaceAll("\\p{InCombiningDiacriticalMarks}+", "").toLowerCase(Locale.ROOT);
+    }
+
+    interface Choice { void pick(int which); }
+    interface SaveTwo { void save(String a, String b); }
+
+    static class Item {
+        int id;
+        int parentId;
+        int cadernoId;
+        int recipeLinkId;
+        String name = "";
+        String desc = "";
+        String extra = "";
+    }
+
+    class Db extends SQLiteOpenHelper {
+        Db(Context context) { super(context, "caderno_receitas_java.db", null, 2); }
+
+        public void onCreate(SQLiteDatabase db) {
+            db.execSQL("CREATE TABLE cadernos(id INTEGER PRIMARY KEY AUTOINCREMENT,nome TEXT NOT NULL,descricao TEXT,criado INTEGER)");
+            db.execSQL("CREATE TABLE categorias(id INTEGER PRIMARY KEY AUTOINCREMENT,caderno_id INTEGER NOT NULL,nome TEXT NOT NULL,descricao TEXT,criado INTEGER)");
+            db.execSQL("CREATE TABLE receitas(id INTEGER PRIMARY KEY AUTOINCREMENT,caderno_id INTEGER NOT NULL,categoria_id INTEGER NOT NULL,nome TEXT NOT NULL,preparo TEXT)");
+            db.execSQL("CREATE TABLE ingredientes(id INTEGER PRIMARY KEY AUTOINCREMENT,receita_id INTEGER NOT NULL,nome TEXT NOT NULL,quantidade TEXT,categoria TEXT,receita_link_id INTEGER NOT NULL DEFAULT 0)");
+        }
+
+        public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+            if (oldVersion < 2) {
+                db.execSQL("ALTER TABLE ingredientes ADD COLUMN receita_link_id INTEGER NOT NULL DEFAULT 0");
+            }
+        }
+
+        Item get(String table, int id) {
+            try (Cursor c = getReadableDatabase().rawQuery("SELECT * FROM " + table + " WHERE id=?", new String[]{String.valueOf(id)})) {
+                if (c.moveToFirst()) {
+                    Item item = new Item();
+                    item.id = id;
+                    item.name = c.getString(c.getColumnIndexOrThrow("nome"));
+                    item.desc = c.getString(c.getColumnIndexOrThrow("descricao"));
+                    if (hasColumn(c, "caderno_id")) item.parentId = c.getInt(c.getColumnIndexOrThrow("caderno_id"));
+                    return item;
+                }
+            }
+            return new Item();
+        }
+
+        Item getReceita(int id) {
+            try (Cursor c = getReadableDatabase().rawQuery("SELECT * FROM receitas WHERE id=?", new String[]{String.valueOf(id)})) {
+                if (c.moveToFirst()) {
+                    Item item = new Item();
+                    item.id = id;
+                    item.cadernoId = c.getInt(c.getColumnIndexOrThrow("caderno_id"));
+                    item.parentId = c.getInt(c.getColumnIndexOrThrow("categoria_id"));
+                    item.name = c.getString(c.getColumnIndexOrThrow("nome"));
+                    item.desc = c.getString(c.getColumnIndexOrThrow("preparo"));
+                    return item;
+                }
+            }
+            return new Item();
+        }
+
+        List<Item> cadernos(String q) {
+            return list("SELECT id,nome,descricao,'' extra,0 parent_id,0 caderno_id FROM cadernos ORDER BY nome", q);
+        }
+
+        List<Item> categorias(int caderno, String q) {
+            return list("SELECT id,nome,descricao,'' extra,caderno_id parent_id,caderno_id FROM categorias WHERE caderno_id=" + caderno + " ORDER BY nome", q);
+        }
+
+        List<Item> receitas(int categoria, String q) {
+            return list("SELECT id,nome,preparo descricao,'' extra,categoria_id parent_id,caderno_id FROM receitas WHERE categoria_id=" + categoria + " ORDER BY nome", q);
+        }
+
+        List<Item> ingredientes(int receita, String q) {
+            return list("SELECT id,nome,quantidade descricao,categoria extra,receita_id parent_id,0 caderno_id,receita_link_id FROM ingredientes WHERE receita_id=" + receita + " ORDER BY categoria,nome", q);
+        }
+
+        List<Item> list(String sql, String q) {
+            ArrayList<Item> out = new ArrayList<>();
+            String nq = norm(q);
+            try (Cursor c = getReadableDatabase().rawQuery(sql, null)) {
+                while (c.moveToNext()) {
+                    Item item = new Item();
+                    item.id = c.getInt(0);
+                    item.name = safe(c.getString(1));
+                    item.desc = safe(c.getString(2));
+                    item.extra = safe(c.getString(3));
+                    item.parentId = c.getInt(4);
+                    item.cadernoId = c.getInt(5);
+                    if (c.getColumnCount() > 6) item.recipeLinkId = c.getInt(6);
+                    if (nq.isEmpty() || norm(item.name + " " + item.desc + " " + item.extra).contains(nq)) out.add(item);
+                }
+            }
+            return out;
+        }
+
+        void saveCaderno(int id, String nome, String desc) {
+            ContentValues v = values(nome, desc);
+            if (id == 0) {
+                v.put("criado", System.currentTimeMillis());
+                getWritableDatabase().insert("cadernos", null, v);
+            } else getWritableDatabase().update("cadernos", v, "id=?", new String[]{String.valueOf(id)});
+        }
+
+        void saveCategoria(int id, int caderno, String nome, String desc) {
+            ContentValues v = values(nome, desc);
+            v.put("caderno_id", caderno);
+            if (id == 0) {
+                v.put("criado", System.currentTimeMillis());
+                getWritableDatabase().insert("categorias", null, v);
+            } else getWritableDatabase().update("categorias", v, "id=?", new String[]{String.valueOf(id)});
+        }
+
+        void saveReceita(int id, int caderno, int categoria, String nome, String preparo) {
+            ContentValues v = new ContentValues();
+            v.put("caderno_id", caderno);
+            v.put("categoria_id", categoria);
+            v.put("nome", nome);
+            v.put("preparo", preparo);
+            if (id == 0) getWritableDatabase().insert("receitas", null, v);
+            else getWritableDatabase().update("receitas", v, "id=?", new String[]{String.valueOf(id)});
+        }
+
+        void saveIngrediente(int id, int receita, String nome, String qtd, String categoria, int recipeLinkId) {
+            ContentValues v = new ContentValues();
+            v.put("receita_id", receita);
+            v.put("nome", nome);
+            v.put("quantidade", qtd);
+            v.put("categoria", categoria);
+            v.put("receita_link_id", recipeLinkId);
+            if (id == 0) getWritableDatabase().insert("ingredientes", null, v);
+            else getWritableDatabase().update("ingredientes", v, "id=?", new String[]{String.valueOf(id)});
+        }
+
+        List<Item> receitasParaVincular(int receitaAtual) {
+            return list("SELECT id,nome,preparo descricao,'' extra,categoria_id parent_id,caderno_id FROM receitas WHERE id<>" + receitaAtual + " ORDER BY nome", "");
+        }
+
+        void delete(String table, int id) {
+            getWritableDatabase().delete(table, "id=?", new String[]{String.valueOf(id)});
+        }
+
+        void deleteCaderno(int id) {
+            for (Item c : categorias(id, "")) deleteCategoria(c.id);
+            delete("cadernos", id);
+        }
+
+        void deleteCategoria(int id) {
+            for (Item r : receitas(id, "")) deleteReceita(r.id);
+            delete("categorias", id);
+        }
+
+        void deleteReceita(int id) {
+            getWritableDatabase().delete("ingredientes", "receita_id=?", new String[]{String.valueOf(id)});
+            delete("receitas", id);
+        }
+
+        int countReceitasCaderno(int id) { return count("SELECT COUNT(*) FROM receitas WHERE caderno_id=" + id); }
+        int countReceitasCategoria(int id) { return count("SELECT COUNT(*) FROM receitas WHERE categoria_id=" + id); }
+        int countIngredientes(int id) { return count("SELECT COUNT(*) FROM ingredientes WHERE receita_id=" + id); }
+
+        int count(String sql) {
+            try (Cursor c = getReadableDatabase().rawQuery(sql, null)) {
+                return c.moveToFirst() ? c.getInt(0) : 0;
+            }
+        }
+
+        List<String> cadernoNames() { return names("SELECT DISTINCT nome FROM cadernos ORDER BY nome"); }
+        List<String> ingredientNames() { return names("SELECT DISTINCT nome FROM ingredientes ORDER BY nome"); }
+        List<String> ingredientCategories() { return names("SELECT DISTINCT categoria FROM ingredientes WHERE categoria<>'' ORDER BY categoria"); }
+
+        List<String> names(String sql) {
+            ArrayList<String> out = new ArrayList<>();
+            try (Cursor c = getReadableDatabase().rawQuery(sql, null)) {
+                while (c.moveToNext()) out.add(safe(c.getString(0)));
+            }
+            return out;
+        }
+
+        ContentValues values(String nome, String desc) {
+            ContentValues v = new ContentValues();
+            v.put("nome", nome);
+            v.put("descricao", desc);
+            return v;
+        }
+
+        boolean hasColumn(Cursor c, String name) {
+            return c.getColumnIndex(name) >= 0;
+        }
+
+        String safe(String s) { return s == null ? "" : s; }
+    }
+}
