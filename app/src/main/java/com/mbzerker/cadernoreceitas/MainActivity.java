@@ -102,11 +102,11 @@ public class MainActivity extends Activity {
         actions.addView(title);
         TextView sub = label("🍽 Organize cadernos, categorias, receitas e ingredientes.", 14, MUTED, false);
         actions.addView(sub);
-        LinearLayout row = hrow();
-        row.addView(iconButton("+", "Novo caderno", v -> newCaderno()), weight());
-        row.addView(iconButton("?", "Teste", v -> toast("Teste mantido para migracao futura.")), weight());
-        row.addView(iconButton("U", "Atualizar", v -> checkUpdate()), weight());
-        actions.addView(row);
+        LinearLayout row = iconStrip();
+        addWeightedStripIcon(row, R.drawable.ic_plus, RED, "Novo caderno", v -> newCaderno());
+        addWeightedStripIcon(row, R.drawable.ic_report, RED_DARK, "Teste", v -> toast("Teste mantido para migracao futura."));
+        addWeightedStripIcon(row, R.drawable.ic_update, GOLD, "Atualizar", v -> checkUpdate());
+        actions.addView(row, actionStripParams());
         root.addView(actions);
 
         addSearch("Pesquisar cadernos", this::renderHomeList);
@@ -141,7 +141,7 @@ public class MainActivity extends Activity {
         LinearLayout add = card();
         add.addView(label("▤ Categoria", 20, INK, true));
         add.addView(label("✦ Crie categorias para separar massas, doces, molhos e outros preparos.", 14, MUTED, false));
-        add.addView(iconButton("+", "Adicionar categoria", v -> newCategoria()));
+        addActionButton(add, R.drawable.ic_plus, "Adicionar categoria", v -> newCategoria());
         root.addView(add);
 
         addSearch("Pesquisar categorias", this::renderCategorias);
@@ -177,7 +177,7 @@ public class MainActivity extends Activity {
         LinearLayout add = card();
         add.addView(label("□ Receita", 20, INK, true));
         add.addView(label("✦ Cadastre receitas desta categoria.", 14, MUTED, false));
-        add.addView(iconButton("+", "Adicionar receita", v -> newReceita()));
+        addActionButton(add, R.drawable.ic_plus, "Adicionar receita", v -> newReceita());
         root.addView(add);
 
         addSearch("Pesquisar receitas", this::renderReceitas);
@@ -215,13 +215,13 @@ public class MainActivity extends Activity {
         LinearLayout preparoCard = card();
         preparoCard.addView(label("☰ Modo de preparo", 20, INK, true));
         preparoCard.addView(label(receita.desc.isEmpty() ? "Nenhum modo de preparo cadastrado." : receita.desc, 15, INK, false));
-        preparoCard.addView(iconButton("S", "Editar receita", v -> editReceita(receita)));
+        addActionButton(preparoCard, R.drawable.ic_update, "Editar receita", v -> editReceita(receita));
         root.addView(preparoCard);
 
         LinearLayout ingredientActions = card();
         ingredientActions.addView(label("• Ingredientes", 20, INK, true));
         ingredientActions.addView(label("✦ Adicione matéria-prima ou vincule outra receita como preparo base.", 14, MUTED, false));
-        ingredientActions.addView(iconButton("+", "Adicionar ingrediente", v -> newIngrediente()));
+        addActionButton(ingredientActions, R.drawable.ic_plus, "Adicionar ingrediente", v -> newIngrediente());
         root.addView(ingredientActions);
 
         addSearch("Pesquisar ingredientes", this::renderIngredientes);
@@ -505,7 +505,10 @@ public class MainActivity extends Activity {
 
     private LinearLayout headerInline(String icon, String title, Runnable back) {
         LinearLayout row = hrow();
-        row.addView(iconButton("<", "Voltar", v -> back.run()), new LinearLayout.LayoutParams(dp(56), dp(56)));
+        ImageButton backButton = imageIconButton(R.drawable.ic_back, RED, Color.WHITE);
+        backButton.setContentDescription("Voltar");
+        backButton.setOnClickListener(v -> back.run());
+        row.addView(backButton, new LinearLayout.LayoutParams(dp(56), dp(56)));
         TextView iconView = label(icon, 28, GOLD, true);
         iconView.setGravity(Gravity.CENTER);
         row.addView(iconView, new LinearLayout.LayoutParams(dp(48), dp(56)));
@@ -533,10 +536,9 @@ public class MainActivity extends Activity {
 
     private void addMenuButton(LinearLayout card, Runnable action) {
         LinearLayout row = (LinearLayout) card.getChildAt(0);
-        TextView menu = label("...", 22, RED, true);
-        menu.setGravity(Gravity.CENTER);
+        ImageButton menu = moreMenuButton(RED);
         menu.setOnClickListener(v -> action.run());
-        row.addView(menu, new LinearLayout.LayoutParams(dp(42), -1));
+        row.addView(menu, new LinearLayout.LayoutParams(dp(42), dp(48)));
     }
 
     private LinearLayout empty(String title, String subtitle) {
@@ -627,23 +629,82 @@ public class MainActivity extends Activity {
         return e;
     }
 
-    private TextView iconButton(String text, String desc, View.OnClickListener listener) {
-        TextView b = new TextView(this);
-        b.setText(text);
-        b.setGravity(Gravity.CENTER);
-        b.setTextSize(22);
-        b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        b.setContentDescription(desc);
-        b.setTextColor(Color.WHITE);
-        GradientDrawable base = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.rgb(255, 209, 139), Color.rgb(196, 68, 32)});
-        base.setCornerRadius(dp(20));
-        base.setStroke(dp(1), Color.argb(170, 255, 236, 196));
-        GradientDrawable shine = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.argb(110, 255, 255, 255), Color.TRANSPARENT});
-        shine.setCornerRadius(dp(20));
-        b.setBackground(new LayerDrawable(new android.graphics.drawable.Drawable[]{base, shine}));
-        b.setElevation(dp(3));
-        b.setOnClickListener(listener);
-        return b;
+    private void addActionButton(LinearLayout parent, int drawable, String desc, View.OnClickListener listener) {
+        LinearLayout strip = iconStrip();
+        addWeightedStripIcon(strip, drawable, RED, desc, listener);
+        parent.addView(strip, actionStripParams());
+    }
+
+    private LinearLayout iconStrip() {
+        LinearLayout strip = new LinearLayout(this);
+        strip.setOrientation(LinearLayout.HORIZONTAL);
+        strip.setGravity(Gravity.CENTER);
+        strip.setPadding(dp(5), dp(5), dp(5), dp(5));
+        strip.setBackground(round(CARD_STRONG, dp(18), LINE, 1));
+        strip.setElevation(dp(4));
+        return strip;
+    }
+
+    private ImageButton addWeightedStripIcon(LinearLayout strip, int drawable, int color, String desc, View.OnClickListener listener) {
+        if (strip.getChildCount() > 0) addStripDivider(strip);
+        ImageButton button = plainIconButton(drawable, color, dp(9));
+        button.setContentDescription(desc);
+        if (listener != null) button.setOnClickListener(listener);
+        strip.addView(button, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
+        return button;
+    }
+
+    private void addStripDivider(LinearLayout strip) {
+        View divider = new View(this);
+        divider.setBackgroundColor(Color.argb(115, 184, 50, 22));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(1), ViewGroup.LayoutParams.MATCH_PARENT);
+        params.setMargins(dp(3), dp(10), dp(3), dp(10));
+        strip.addView(divider, params);
+    }
+
+    private ImageButton plainIconButton(int drawable, int fg, int padding) {
+        ImageButton button = new ImageButton(this);
+        button.setImageResource(drawable);
+        button.setColorFilter(fg);
+        button.setBackgroundColor(Color.TRANSPARENT);
+        button.setPadding(padding, padding, padding, padding);
+        button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        return button;
+    }
+
+    private ImageButton moreMenuButton(int fg) {
+        ImageButton button = plainIconButton(R.drawable.ic_more_vertical, fg, dp(2));
+        button.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        return button;
+    }
+
+    private ImageButton imageIconButton(int drawable, int bg, int fg) {
+        ImageButton button = new ImageButton(this);
+        button.setImageResource(drawable);
+        button.setColorFilter(fg);
+        button.setBackground(outlineButtonBg(bg, dp(16)));
+        button.setPadding(dp(11), dp(11), dp(11), dp(11));
+        button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        button.setElevation(dp(4));
+        return button;
+    }
+
+    private LinearLayout.LayoutParams actionStripParams() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, dp(64));
+        params.setMargins(0, dp(10), 0, 0);
+        return params;
+    }
+
+    private GradientDrawable outlineButtonBg(int color, int radius) {
+        return round(color, radius, Color.argb(170, 255, 236, 196), 1);
+    }
+
+    private GradientDrawable round(int fill, int radius, int stroke, int strokeWidth) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(fill);
+        bg.setCornerRadius(radius);
+        if (strokeWidth > 0) bg.setStroke(dp(strokeWidth), stroke);
+        return bg;
     }
 
     private LinearLayout hrow() {

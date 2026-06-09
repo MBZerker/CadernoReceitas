@@ -1,12 +1,12 @@
 {
-  "versionCode": 5,
-  "versionName": "0.5.0-java",
+  "versionCode": 6,
+  "versionName": "0.6.0-java",
   "critical": false,
   "pageUrl": "https://mbzerker.github.io/CadernoReceitas/",
-  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.5.0-java.apk",
-  "sha256": "7385347D73D138ADE682F7930261D1D2B0DD02E5F3ED2561A9DA1AD9D534FEF4",
-  "sizeBytes": 17773553,
+  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.6.0-java.apk",
+  "sha256": "9B04E1CBD3257384FDB41752097D98A03A822FFAAB562C44E8F1E48F6B012EA5",
+  "sizeBytes": 17777879,
   "signatureSha256": "f8dec9a06ec4eaf93a1a9b7f5b5cf73490d54d227f0ee172f83177557c79bfe8",
   "origin": "GitHub Pages oficial do Caderno de Receitas",
-  "changelog": "Migração para Android Java puro: app mais leve, splash em tela cheia, CRUD de cadernos/categorias/receitas/ingredientes, pesquisa, menus, ingredientes vinculados a receitas e atualização pelo próprio app."
+  "changelog": "Botoes refeitos no padrao visual do CompraLink, com icones vetoriais, faixa de acoes arredondada e cores atuais do Caderno de Receitas preservadas."
 }
