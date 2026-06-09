@@ -1,12 +1,12 @@
 {
-  "versionCode": 10,
-  "versionName": "0.10.0-java",
+  "versionCode": 11,
+  "versionName": "0.11.0-java",
   "critical": false,
   "pageUrl": "https://mbzerker.github.io/CadernoReceitas/",
-  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.10.0-java.apk",
-  "sha256": "6356C153A52C81628133216A1C33F790C46649C8F0A52BD9D34F7954A4151688",
-  "sizeBytes": 22692859,
+  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.11.0-java.apk",
+  "sha256": "87E73C436C639DF2F73B42DD3BB7642A0D66D1952C6DF83CBD1EFC009A35FD93",
+  "sizeBytes": 22699238,
   "signatureSha256": "f8dec9a06ec4eaf93a1a9b7f5b5cf73490d54d227f0ee172f83177557c79bfe8",
   "origin": "GitHub Pages oficial do Caderno de Receitas",
-  "changelog": "Compartilhamento separado para app, caderno e receita. O app usa o encurtador do CompraLink quando disponivel e links importaveis via GitHub Pages em /l/. Cadernos e receitas compartilhados podem ser importados no banco local preservando grupos, ingredientes e vinculos internos de receitas."
+  "changelog": "Ajustes de teste, receita e ingredientes: confirmacao antes do teste, botao voltar na prova, 30 modelos de perguntas mais variados, receitas novas abrem direto e nascem desbloqueadas, cards de receita mostram apenas nome e quantidade de ingredientes, autocomplete normalizado sem diferenciar acentos/cedilha/maiusculas, quantidade separada em numero e unidade, categoria sugerida salva automaticamente e preview de impressao sem categoria."
 }

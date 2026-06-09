@@ -16,6 +16,7 @@ import android.print.PrintDocumentAdapter;
 import android.print.PrintManager;
 import android.provider.Settings;
 import android.text.Editable;
+import android.text.InputType;
 import android.text.TextWatcher;
 import android.util.Base64;
 import android.view.*;
@@ -48,6 +49,7 @@ public class MainActivity extends Activity {
     private static final String PAGES_PATH = "/CadernoReceitas/l/";
     private static final String CUSTOM_SHARE_SCHEME = "cadernoreceitas";
     private static final String CUSTOM_SHARE_HOST = "share";
+    private static final int QUIZ_QUESTION_TYPE_COUNT = 30;
     private static final int RED = Color.rgb(184, 50, 22);
     private static final int RED_DARK = Color.rgb(127, 29, 18);
     private static final int GOLD = Color.rgb(217, 154, 59);
@@ -142,7 +144,7 @@ public class MainActivity extends Activity {
 
         LinearLayout actions = card();
         actions.addView(titleRow(R.drawable.ic_book, "Caderno de Receitas", 26));
-        actions.addView(label("Organize cadernos, grupos, receitas e ingredientes.", 14, MUTED, false));
+        actions.addView(centeredLabel("Organize cadernos, grupos, receitas e ingredientes.", 14, MUTED, false));
         LinearLayout row = iconStrip();
         addWeightedStripIcon(row, R.drawable.ic_plus, RED, "Novo caderno", v -> newCaderno());
         addWeightedStripIcon(row, R.drawable.ic_share_nodes, RED_DARK, "Compartilhar app", v -> shareApp());
@@ -180,11 +182,11 @@ public class MainActivity extends Activity {
 
         LinearLayout add = card();
         add.addView(titleRow(R.drawable.ic_category, "Grupo", 20));
-        add.addView(label("Crie grupos para separar massas, doces, molhos e outros preparos.", 14, MUTED, false));
+        add.addView(centeredLabel("Crie grupos para separar massas, doces, molhos e outros preparos.", 14, MUTED, false));
         LinearLayout cadernoActions = iconStrip();
         addWeightedStripIcon(cadernoActions, R.drawable.ic_plus, RED, "Adicionar grupo", v -> newCategoria());
         addWeightedStripIcon(cadernoActions, R.drawable.ic_clipboard_list, GOLD, "Ingredientes cadastrados", v -> showIngredientesCaderno());
-        addWeightedStripIcon(cadernoActions, R.drawable.ic_report, RED_DARK, "Teste", v -> startQuizOrExplain());
+        addWeightedStripIcon(cadernoActions, R.drawable.ic_report, RED_DARK, "Teste", v -> askStartQuiz());
         addWeightedStripIcon(cadernoActions, R.drawable.ic_share_nodes, RED, "Compartilhar caderno", v -> shareCaderno(currentCadernoId));
         add.addView(cadernoActions, actionStripParams());
         root.addView(add);
@@ -246,7 +248,7 @@ public class MainActivity extends Activity {
 
         LinearLayout add = card();
         add.addView(titleRow(R.drawable.ic_recipe, "Receita", 20));
-        add.addView(label("Cadastre receitas deste grupo.", 14, MUTED, false));
+        add.addView(centeredLabel("Cadastre receitas deste grupo.", 14, MUTED, false));
         addActionButton(add, R.drawable.ic_plus, "Adicionar receita", v -> newReceita());
         root.addView(add);
 
@@ -265,7 +267,7 @@ public class MainActivity extends Activity {
             return;
         }
         for (Item item : items) {
-            LinearLayout card = itemCard(R.drawable.ic_recipe, item.name, item.desc, db.countIngredientes(item.id) + " ingredientes", item.locked, () -> {
+            LinearLayout card = itemCard(R.drawable.ic_recipe, item.name, "", db.countIngredientes(item.id) + " ingredientes", item.locked, () -> {
                 if (item.locked) showRecipePreview(item.id);
                 else showReceita(item.id);
             }, () -> toggleLock("receitas", item, this::renderReceitas), () -> menuReceita(item));
@@ -286,7 +288,7 @@ public class MainActivity extends Activity {
 
         LinearLayout ingredientActions = card();
         ingredientActions.addView(titleRow(R.drawable.ic_ingredient, "Ingredientes", 20));
-        ingredientActions.addView(label("Adicione os ingredientes desta receita.", 14, MUTED, false));
+        ingredientActions.addView(centeredLabel("Adicione os ingredientes desta receita.", 14, MUTED, false));
         LinearLayout receitaActions = iconStrip();
         addWeightedStripIcon(receitaActions, R.drawable.ic_plus, RED, "Adicionar ingrediente", v -> newIngrediente());
         addWeightedStripIcon(receitaActions, R.drawable.ic_share_nodes, RED_DARK, "Compartilhar receita", v -> shareReceita(currentReceitaId));
@@ -297,7 +299,7 @@ public class MainActivity extends Activity {
         if (ingredientCount >= 2) {
             LinearLayout preparoCard = card();
             preparoCard.addView(titleRow(R.drawable.ic_prep, "Modo de preparo", 20));
-            preparoCard.addView(label(receita.desc.isEmpty() ? "Toque no lapis para cadastrar o modo de preparo." : receita.desc, 15, INK, false));
+            preparoCard.addView(centeredLabel(receita.desc.isEmpty() ? "Toque no lapis para cadastrar o modo de preparo." : receita.desc, 15, INK, false));
             addActionButton(preparoCard, R.drawable.ic_edit, "Editar modo de preparo", v -> editPreparo(receita));
             root.addView(preparoCard);
         }
@@ -326,12 +328,19 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void startQuizOrExplain() {
+    private void askStartQuiz() {
         int total = db.countReceitasCaderno(currentCadernoId);
         if (total < 5) {
             toast("Teste bloqueado: cadastre pelo menos 5 receitas neste caderno.");
             return;
         }
+        showThemed(themedDialog("Iniciar teste?", null)
+            .setMessage("Deseja fazer o teste deste caderno agora?")
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Comecar", (d, w) -> startQuizOrExplain()));
+    }
+
+    private void startQuizOrExplain() {
         quizQuestions.clear();
         quizQuestions.addAll(buildQuizQuestions());
         if (quizQuestions.size() < 5) {
@@ -352,19 +361,26 @@ public class MainActivity extends Activity {
         Random random = new Random();
         List<Item> recipes = db.receitasCaderno(currentCadernoId);
         ArrayList<String> allIngredients = new ArrayList<>();
+        ArrayList<String> allQuantities = new ArrayList<>();
+        ArrayList<String> allCategories = new ArrayList<>();
         HashMap<Integer, List<Item>> ingredientsByRecipe = new HashMap<>();
         for (Item recipe : recipes) {
             List<Item> ingredients = db.ingredientes(recipe.id, "");
             ingredientsByRecipe.put(recipe.id, ingredients);
-            for (Item ingredient : ingredients) addUnique(allIngredients, ingredient.name);
+            for (Item ingredient : ingredients) {
+                addUnique(allIngredients, ingredient.name);
+                if (!ingredient.desc.isEmpty()) addUnique(allQuantities, ingredient.desc);
+                if (!ingredient.extra.isEmpty()) addUnique(allCategories, ingredient.extra);
+            }
         }
 
         for (Item recipe : recipes) {
             List<Item> ingredients = ingredientsByRecipe.get(recipe.id);
-            if (ingredients == null || ingredients.size() < 2) continue;
+            if (ingredients == null || ingredients.isEmpty()) continue;
             ArrayList<String> recipeIngredients = ingredientNames(ingredients);
-            String correctIngredient = recipeIngredients.get(random.nextInt(recipeIngredients.size()));
+            ArrayList<String> recipeDistractors = recipeNamesExcept(recipes, recipe.id);
             ArrayList<String> distractors = withoutNormalized(allIngredients, recipeIngredients);
+            String correctIngredient = recipeIngredients.get(random.nextInt(recipeIngredients.size()));
             addQuestion(out, "Na receita \"" + recipe.name + "\", qual ingrediente parece plausivel, mas e o verdadeiro detalhe da ficha?", correctIngredient, pickDistractors(distractors, correctIngredient, 3));
 
             if (recipeIngredients.size() >= 3 && !distractors.isEmpty()) {
@@ -377,23 +393,105 @@ public class MainActivity extends Activity {
                 Collections.shuffle(recipeIngredients);
                 String a = recipeIngredients.get(0);
                 String b = recipeIngredients.get(1);
-                ArrayList<String> recipeNames = new ArrayList<>();
-                for (Item other : recipes) {
-                    if (other.id != recipe.id) addUnique(recipeNames, other.name);
-                }
-                addQuestion(out, "Qual receita usa ao mesmo tempo \"" + a + "\" e \"" + b + "\"?", recipe.name, pickDistractors(recipeNames, recipe.name, 3));
+                addQuestion(out, "Qual receita usa ao mesmo tempo \"" + a + "\" e \"" + b + "\"?", recipe.name, pickDistractors(recipeDistractors, recipe.name, 3));
             }
 
             if (!recipe.desc.isEmpty()) {
-                ArrayList<String> prepDistractors = new ArrayList<>();
-                ArrayList<String> recipeDistractors = new ArrayList<>();
-                for (Item other : recipes) {
-                    if (other.id == recipe.id) continue;
-                    if (!other.desc.isEmpty()) addUnique(prepDistractors, prepSnippet(other.desc));
-                    addUnique(recipeDistractors, other.name);
-                }
+                ArrayList<String> prepDistractors = prepSnippetsExcept(recipes, recipe.id);
                 addQuestion(out, "Qual trecho de preparo pertence a \"" + recipe.name + "\"?", prepSnippet(recipe.desc), pickDistractors(prepDistractors, prepSnippet(recipe.desc), 3));
                 addQuestion(out, "Esta instrucao entrega uma receita, mas tenta parecer generica: \"" + prepSnippet(recipe.desc) + "\". Qual e a receita?", recipe.name, pickDistractors(recipeDistractors, recipe.name, 3));
+
+                ArrayList<String> mentioned = ingredientsMentionedInPrep(recipe.desc, recipeIngredients, true);
+                ArrayList<String> notMentioned = ingredientsMentionedInPrep(recipe.desc, recipeIngredients, false);
+                if (!mentioned.isEmpty()) {
+                    String mentionedIngredient = mentioned.get(random.nextInt(mentioned.size()));
+                    addQuestion(out, "Qual ingrediente da ficha de \"" + recipe.name + "\" tambem aparece no modo de preparo?", mentionedIngredient, pickDistractors(withoutNormalized(recipeIngredients, Collections.singletonList(mentionedIngredient)), mentionedIngredient, 3));
+                }
+                if (!notMentioned.isEmpty()) {
+                    String quietIngredient = notMentioned.get(random.nextInt(notMentioned.size()));
+                    addQuestion(out, "Qual ingrediente esta na ficha de \"" + recipe.name + "\", mas nao e citado literalmente no modo de preparo?", quietIngredient, pickDistractors(withoutNormalized(recipeIngredients, Collections.singletonList(quietIngredient)), quietIngredient, 3));
+                }
+            }
+
+            Item quantityItem = randomItem(itemsWithQuantity(ingredients), random);
+            if (quantityItem != null) {
+                addQuestion(out, "Na ficha de \"" + recipe.name + "\", qual quantidade acompanha \"" + quantityItem.name + "\"?", quantityItem.desc, pickDistractorsWithFallback(allQuantities, quantityItem.desc, quantityFallbacks(), 3));
+                addQuestion(out, "Qual ingrediente de \"" + recipe.name + "\" esta cadastrado com \"" + quantityItem.desc + "\"?", quantityItem.name, pickDistractors(withoutNormalized(recipeIngredients, Collections.singletonList(quantityItem.name)), quantityItem.name, 3));
+                addQuestion(out, "Qual par quantidade + ingrediente pertence a \"" + recipe.name + "\"?", quantityPair(quantityItem), pairDistractors(quantityPairs(itemsWithQuantity(ingredients)), quantityPair(quantityItem), quantityPairsFromOtherRecipes(recipes, ingredientsByRecipe, recipe.id)));
+            }
+
+            Item categoryItem = randomItem(itemsWithCategory(ingredients), random);
+            if (categoryItem != null) {
+                ArrayList<String> categories = categoryNames(ingredients);
+                addQuestion(out, "Em \"" + recipe.name + "\", qual categoria organiza \"" + categoryItem.name + "\"?", categoryItem.extra, pickDistractorsWithFallback(allCategories, categoryItem.extra, categoryFallbacks(), 3));
+                addQuestion(out, "Qual ingrediente de \"" + recipe.name + "\" esta dentro da categoria \"" + categoryItem.extra + "\"?", categoryItem.name, pickDistractors(withoutNormalized(recipeIngredients, Collections.singletonList(categoryItem.name)), categoryItem.name, 3));
+                addQuestion(out, "Qual par categoria + ingrediente pertence a \"" + recipe.name + "\"?", categoryPair(categoryItem), pairDistractors(categoryPairs(itemsWithCategory(ingredients)), categoryPair(categoryItem), categoryPairsFromOtherRecipes(recipes, ingredientsByRecipe, recipe.id)));
+                String dominant = dominantCategory(ingredients, true);
+                String rare = dominantCategory(ingredients, false);
+                if (!dominant.isEmpty()) addQuestion(out, "Qual categoria mais se repete em \"" + recipe.name + "\"?", dominant, pickDistractorsWithFallback(categories, dominant, categoryFallbacks(), 3));
+                if (!rare.isEmpty()) addQuestion(out, "Qual categoria aparece menos em \"" + recipe.name + "\"?", rare, pickDistractorsWithFallback(categories, rare, categoryFallbacks(), 3));
+            }
+
+            addQuestion(out, "Quantos ingredientes estao cadastrados em \"" + recipe.name + "\"?", countLabel(ingredients.size()), numberDistractors(ingredients.size()));
+
+            Item more = recipeByIngredientCount(recipes, ingredientsByRecipe, recipe.id, ingredients.size(), 1);
+            if (more != null) addQuestion(out, "Qual receita tem MAIS ingredientes que \"" + recipe.name + "\"?", more.name, recipeNamesByIngredientCount(recipes, ingredientsByRecipe, recipe.id, ingredients.size(), -1));
+
+            Item less = recipeByIngredientCount(recipes, ingredientsByRecipe, recipe.id, ingredients.size(), -1);
+            if (less != null) addQuestion(out, "Qual receita tem MENOS ingredientes que \"" + recipe.name + "\"?", less.name, recipeNamesByIngredientCount(recipes, ingredientsByRecipe, recipe.id, ingredients.size(), 1));
+
+            Item same = recipeByIngredientCount(recipes, ingredientsByRecipe, recipe.id, ingredients.size(), 0);
+            if (same != null) addQuestion(out, "Qual receita tem a MESMA quantidade de ingredientes que \"" + recipe.name + "\"?", same.name, recipeNamesByDifferentIngredientCount(recipes, ingredientsByRecipe, recipe.id, ingredients.size()));
+
+            if (recipeIngredients.size() >= 2) {
+                ArrayList<String> sorted = new ArrayList<>(recipeIngredients);
+                Collections.sort(sorted, (a, b) -> norm(a).compareTo(norm(b)));
+                addQuestion(out, "Qual ingrediente vem primeiro em ordem alfabetica dentro de \"" + recipe.name + "\"?", sorted.get(0), pickDistractors(withoutNormalized(sorted, Collections.singletonList(sorted.get(0))), sorted.get(0), 3));
+                addQuestion(out, "Qual ingrediente vem por ultimo em ordem alfabetica dentro de \"" + recipe.name + "\"?", sorted.get(sorted.size() - 1), pickDistractors(withoutNormalized(sorted, Collections.singletonList(sorted.get(sorted.size() - 1))), sorted.get(sorted.size() - 1), 3));
+
+                ArrayList<String> pairs = ingredientPairs(recipeIngredients);
+                if (!pairs.isEmpty()) {
+                    String validPair = pairs.get(random.nextInt(pairs.size()));
+                    addQuestion(out, "Qual dupla de ingredientes pertence a \"" + recipe.name + "\"?", validPair, pairDistractors(pairs, validPair, ingredientPairs(distractors)));
+                    String fakePair = fakePair(recipeIngredients, distractors, random);
+                    if (!fakePair.isEmpty()) addQuestion(out, "Qual dupla NAO pertence por completo a \"" + recipe.name + "\"?", fakePair, pairDistractors(ingredientPairs(recipeIngredients), fakePair, new ArrayList<>()));
+                }
+            }
+
+            Item linked = randomItem(itemsLinkedToRecipe(ingredients), random);
+            if (linked != null) {
+                addQuestion(out, "Qual ingrediente de \"" + recipe.name + "\" e uma receita preparada vinculada?", linked.name, pickDistractors(withoutNormalized(recipeIngredients, Collections.singletonList(linked.name)), linked.name, 3));
+                addQuestion(out, "O ingrediente \"" + linked.name + "\" aponta para qual receita preparada?", db.getReceita(linked.recipeLinkId).name, pickDistractors(recipeDistractors, db.getReceita(linked.recipeLinkId).name, 3));
+            }
+
+            Item raw = randomItem(itemsNotLinkedToRecipe(ingredients), random);
+            if (raw != null) {
+                addQuestion(out, "Qual item de \"" + recipe.name + "\" e materia-prima comum, sem receita vinculada?", raw.name, pickDistractors(withoutNormalized(recipeIngredients, Collections.singletonList(raw.name)), raw.name, 3));
+            }
+
+            Item aGosto = randomItem(itemsWithAGosto(ingredients), random);
+            if (aGosto != null) {
+                addQuestion(out, "Qual ingrediente de \"" + recipe.name + "\" esta marcado como \"a gosto\"?", aGosto.name, pickDistractors(withoutNormalized(recipeIngredients, Collections.singletonList(aGosto.name)), aGosto.name, 3));
+            }
+
+            Item other = randomRecipe(recipes, recipe.id, random);
+            if (other != null) {
+                ArrayList<String> otherIngredients = ingredientNames(ingredientsByRecipe.get(other.id));
+                ArrayList<String> onlyHere = withoutNormalized(recipeIngredients, otherIngredients);
+                ArrayList<String> onlyThere = withoutNormalized(otherIngredients, recipeIngredients);
+                ArrayList<String> common = commonValues(recipeIngredients, otherIngredients);
+                if (!onlyHere.isEmpty()) {
+                    String correct = onlyHere.get(random.nextInt(onlyHere.size()));
+                    addQuestion(out, "Qual ingrediente aparece em \"" + recipe.name + "\", mas nao em \"" + other.name + "\"?", correct, pickDistractorsWithFallback(onlyThere, correct, allIngredients.toArray(new String[0]), 3));
+                }
+                if (!onlyThere.isEmpty()) {
+                    String correct = onlyThere.get(random.nextInt(onlyThere.size()));
+                    addQuestion(out, "Qual ingrediente aparece em \"" + other.name + "\", mas nao em \"" + recipe.name + "\"?", correct, pickDistractorsWithFallback(onlyHere, correct, allIngredients.toArray(new String[0]), 3));
+                }
+                if (!common.isEmpty()) {
+                    String correct = common.get(random.nextInt(common.size()));
+                    addQuestion(out, "Qual ingrediente aparece tanto em \"" + recipe.name + "\" quanto em \"" + other.name + "\"?", correct, pickDistractors(withoutNormalized(allIngredients, Collections.singletonList(correct)), correct, 3));
+                }
             }
         }
         return out;
@@ -412,6 +510,263 @@ public class MainActivity extends Activity {
         out.add(new QuizQuestion(prompt, options, indexOfNorm(options, correct)));
     }
 
+    private ArrayList<String> recipeNamesExcept(List<Item> recipes, int excludedId) {
+        ArrayList<String> names = new ArrayList<>();
+        for (Item recipe : recipes) {
+            if (recipe.id != excludedId) addUnique(names, recipe.name);
+        }
+        return names;
+    }
+
+    private ArrayList<String> prepSnippetsExcept(List<Item> recipes, int excludedId) {
+        ArrayList<String> snippets = new ArrayList<>();
+        for (Item recipe : recipes) {
+            if (recipe.id != excludedId && !recipe.desc.isEmpty()) addUnique(snippets, prepSnippet(recipe.desc));
+        }
+        return snippets;
+    }
+
+    private ArrayList<String> pickDistractorsWithFallback(List<String> source, String correct, String[] fallback, int count) {
+        ArrayList<String> pool = new ArrayList<>();
+        if (source != null) {
+            for (String value : source) {
+                if (!norm(value).equals(norm(correct))) addUnique(pool, value);
+            }
+        }
+        if (fallback != null) {
+            for (String value : fallback) {
+                if (!norm(value).equals(norm(correct))) addUnique(pool, value);
+            }
+        }
+        Collections.shuffle(pool);
+        ArrayList<String> out = new ArrayList<>();
+        for (String value : pool) {
+            if (out.size() == count) break;
+            out.add(value);
+        }
+        return out;
+    }
+
+    private String[] quantityFallbacks() {
+        return new String[]{"1 un", "2 un", "100 ml", "200 ml", "500 ml", "1 kg", "a gosto"};
+    }
+
+    private String[] categoryFallbacks() {
+        return new String[]{"gordura", "tempero", "molho", "base", "proteina", "finalizacao"};
+    }
+
+    private ArrayList<String> categoryNames(List<Item> ingredients) {
+        ArrayList<String> out = new ArrayList<>();
+        for (Item item : ingredients) {
+            if (!item.extra.isEmpty()) addUnique(out, item.extra);
+        }
+        return out;
+    }
+
+    private ArrayList<Item> itemsWithQuantity(List<Item> ingredients) {
+        ArrayList<Item> out = new ArrayList<>();
+        if (ingredients == null) return out;
+        for (Item item : ingredients) {
+            if (!item.desc.isEmpty()) out.add(item);
+        }
+        return out;
+    }
+
+    private ArrayList<Item> itemsWithCategory(List<Item> ingredients) {
+        ArrayList<Item> out = new ArrayList<>();
+        if (ingredients == null) return out;
+        for (Item item : ingredients) {
+            if (!item.extra.isEmpty()) out.add(item);
+        }
+        return out;
+    }
+
+    private ArrayList<Item> itemsLinkedToRecipe(List<Item> ingredients) {
+        ArrayList<Item> out = new ArrayList<>();
+        if (ingredients == null) return out;
+        for (Item item : ingredients) {
+            if (item.recipeLinkId > 0) out.add(item);
+        }
+        return out;
+    }
+
+    private ArrayList<Item> itemsNotLinkedToRecipe(List<Item> ingredients) {
+        ArrayList<Item> out = new ArrayList<>();
+        if (ingredients == null) return out;
+        for (Item item : ingredients) {
+            if (item.recipeLinkId <= 0) out.add(item);
+        }
+        return out;
+    }
+
+    private ArrayList<Item> itemsWithAGosto(List<Item> ingredients) {
+        ArrayList<Item> out = new ArrayList<>();
+        if (ingredients == null) return out;
+        for (Item item : ingredients) {
+            if (norm(item.desc).contains("a gosto")) out.add(item);
+        }
+        return out;
+    }
+
+    private Item randomItem(List<Item> items, Random random) {
+        return items == null || items.isEmpty() ? null : items.get(random.nextInt(items.size()));
+    }
+
+    private Item randomRecipe(List<Item> recipes, int excludedId, Random random) {
+        ArrayList<Item> pool = new ArrayList<>();
+        for (Item recipe : recipes) {
+            if (recipe.id != excludedId) pool.add(recipe);
+        }
+        return randomItem(pool, random);
+    }
+
+    private String countLabel(int count) {
+        return count + (count == 1 ? " ingrediente" : " ingredientes");
+    }
+
+    private ArrayList<String> numberDistractors(int correct) {
+        ArrayList<String> out = new ArrayList<>();
+        for (int value : new int[]{correct - 2, correct - 1, correct + 1, correct + 2, correct + 3}) {
+            if (value > 0 && value != correct) addUnique(out, countLabel(value));
+        }
+        return out;
+    }
+
+    private Item recipeByIngredientCount(List<Item> recipes, HashMap<Integer, List<Item>> byRecipe, int excludedId, int count, int mode) {
+        for (Item recipe : recipes) {
+            if (recipe.id == excludedId) continue;
+            int other = byRecipe.containsKey(recipe.id) ? byRecipe.get(recipe.id).size() : 0;
+            if ((mode > 0 && other > count) || (mode < 0 && other < count) || (mode == 0 && other == count)) return recipe;
+        }
+        return null;
+    }
+
+    private ArrayList<String> recipeNamesByIngredientCount(List<Item> recipes, HashMap<Integer, List<Item>> byRecipe, int excludedId, int count, int oppositeMode) {
+        ArrayList<String> out = new ArrayList<>();
+        for (Item recipe : recipes) {
+            if (recipe.id == excludedId) continue;
+            int other = byRecipe.containsKey(recipe.id) ? byRecipe.get(recipe.id).size() : 0;
+            if ((oppositeMode > 0 && other > count) || (oppositeMode < 0 && other < count)) addUnique(out, recipe.name);
+        }
+        return out;
+    }
+
+    private ArrayList<String> recipeNamesByDifferentIngredientCount(List<Item> recipes, HashMap<Integer, List<Item>> byRecipe, int excludedId, int count) {
+        ArrayList<String> out = new ArrayList<>();
+        for (Item recipe : recipes) {
+            if (recipe.id == excludedId) continue;
+            int other = byRecipe.containsKey(recipe.id) ? byRecipe.get(recipe.id).size() : 0;
+            if (other != count) addUnique(out, recipe.name);
+        }
+        return out;
+    }
+
+    private ArrayList<String> ingredientPairs(List<String> names) {
+        ArrayList<String> out = new ArrayList<>();
+        for (int i = 0; i < names.size(); i++) {
+            for (int j = i + 1; j < names.size(); j++) addUnique(out, names.get(i) + " + " + names.get(j));
+        }
+        return out;
+    }
+
+    private String fakePair(ArrayList<String> recipeIngredients, ArrayList<String> outsiders, Random random) {
+        if (recipeIngredients.isEmpty() || outsiders.isEmpty()) return "";
+        return recipeIngredients.get(random.nextInt(recipeIngredients.size())) + " + " + outsiders.get(random.nextInt(outsiders.size()));
+    }
+
+    private ArrayList<String> pairDistractors(List<String> localPairs, String correct, List<String> fallbackPairs) {
+        ArrayList<String> pool = new ArrayList<>();
+        if (localPairs != null) {
+            for (String pair : localPairs) {
+                if (!norm(pair).equals(norm(correct))) addUnique(pool, pair);
+            }
+        }
+        if (fallbackPairs != null) {
+            for (String pair : fallbackPairs) {
+                if (!norm(pair).equals(norm(correct))) addUnique(pool, pair);
+            }
+        }
+        Collections.shuffle(pool);
+        ArrayList<String> out = new ArrayList<>();
+        for (String pair : pool) {
+            if (out.size() == 3) break;
+            out.add(pair);
+        }
+        return out;
+    }
+
+    private String quantityPair(Item item) {
+        return item.desc + " - " + item.name;
+    }
+
+    private ArrayList<String> quantityPairs(List<Item> items) {
+        ArrayList<String> out = new ArrayList<>();
+        for (Item item : items) addUnique(out, quantityPair(item));
+        return out;
+    }
+
+    private ArrayList<String> quantityPairsFromOtherRecipes(List<Item> recipes, HashMap<Integer, List<Item>> byRecipe, int excludedId) {
+        ArrayList<String> out = new ArrayList<>();
+        for (Item recipe : recipes) {
+            if (recipe.id != excludedId) out.addAll(quantityPairs(itemsWithQuantity(byRecipe.get(recipe.id))));
+        }
+        return out;
+    }
+
+    private String categoryPair(Item item) {
+        return item.extra + " - " + item.name;
+    }
+
+    private ArrayList<String> categoryPairs(List<Item> items) {
+        ArrayList<String> out = new ArrayList<>();
+        for (Item item : items) addUnique(out, categoryPair(item));
+        return out;
+    }
+
+    private ArrayList<String> categoryPairsFromOtherRecipes(List<Item> recipes, HashMap<Integer, List<Item>> byRecipe, int excludedId) {
+        ArrayList<String> out = new ArrayList<>();
+        for (Item recipe : recipes) {
+            if (recipe.id != excludedId) out.addAll(categoryPairs(itemsWithCategory(byRecipe.get(recipe.id))));
+        }
+        return out;
+    }
+
+    private String dominantCategory(List<Item> ingredients, boolean most) {
+        HashMap<String, Integer> counts = new HashMap<>();
+        for (Item item : ingredients) {
+            if (!item.extra.isEmpty()) counts.put(item.extra, counts.containsKey(item.extra) ? counts.get(item.extra) + 1 : 1);
+        }
+        String best = "";
+        int bestCount = most ? -1 : Integer.MAX_VALUE;
+        for (String category : counts.keySet()) {
+            int value = counts.get(category);
+            if ((most && value > bestCount) || (!most && value < bestCount)) {
+                best = category;
+                bestCount = value;
+            }
+        }
+        return best;
+    }
+
+    private ArrayList<String> ingredientsMentionedInPrep(String prep, ArrayList<String> ingredients, boolean mentioned) {
+        ArrayList<String> out = new ArrayList<>();
+        String cleanPrep = norm(prep);
+        for (String ingredient : ingredients) {
+            boolean contains = cleanPrep.contains(norm(ingredient));
+            if (contains == mentioned) addUnique(out, ingredient);
+        }
+        return out;
+    }
+
+    private ArrayList<String> commonValues(ArrayList<String> a, ArrayList<String> b) {
+        ArrayList<String> out = new ArrayList<>();
+        for (String value : a) {
+            if (containsNorm(b, value)) addUnique(out, value);
+        }
+        return out;
+    }
+
+
     private void showQuizQuestion() {
         screen = "quiz";
         if (quizIndex >= quizQuestions.size()) {
@@ -422,9 +777,10 @@ public class MainActivity extends Activity {
         QuizQuestion question = quizQuestions.get(quizIndex);
 
         LinearLayout top = card();
-        TextView title = label("Teste do Caderno", 24, RED, true);
-        title.setGravity(Gravity.CENTER);
-        top.addView(title);
+        top.addView(headerInline("Teste do Caderno", () -> {
+            stopQuizTimer();
+            showCaderno(currentCadernoId);
+        }));
         quizTimer = label("", 18, RED_DARK, true);
         quizTimer.setGravity(Gravity.CENTER);
         top.addView(quizTimer);
@@ -521,7 +877,7 @@ public class MainActivity extends Activity {
         result.addView(detail);
         LinearLayout row = iconStrip();
         addWeightedStripIcon(row, R.drawable.ic_back, RED, "Voltar", v -> showCaderno(currentCadernoId));
-        addWeightedStripIcon(row, R.drawable.ic_report, RED_DARK, "Novo teste", v -> startQuizOrExplain());
+        addWeightedStripIcon(row, R.drawable.ic_report, RED_DARK, "Novo teste", v -> askStartQuiz());
         result.addView(row, actionStripParams());
         root.addView(result);
     }
@@ -652,7 +1008,6 @@ public class MainActivity extends Activity {
         StringBuilder line = new StringBuilder();
         if (!ingredient.desc.isEmpty()) line.append(ingredient.desc).append(" - ");
         line.append(ingredient.name);
-        if (!ingredient.extra.isEmpty()) line.append(" (").append(ingredient.extra).append(")");
         if (ingredient.recipeLinkId > 0) line.append(" - receita vinculada");
         return line.toString();
     }
@@ -1122,8 +1477,9 @@ public class MainActivity extends Activity {
             .setNegativeButton("Cancelar", null)
             .setPositiveButton("Salvar", (d, w) -> {
                 if (blank(nome)) return;
-                db.saveReceita(0, currentCadernoId, currentCategoriaId, text(nome), "");
-                renderReceitas();
+                int receitaId = db.addReceita(currentCadernoId, currentCategoriaId, text(nome), "");
+                db.setLocked("receitas", receitaId, false);
+                showReceita(receitaId);
             }));
     }
 
@@ -1211,11 +1567,14 @@ public class MainActivity extends Activity {
     private void showIngredientDialog(String title, Item item) {
         LinearLayout box = themedDialogBox();
         AutoCompleteTextView nome = autoEntry("Nome do ingrediente", db.ingredientAndRecipeNames(currentReceitaId));
-        EditText qtd = entry("Quantidade", "");
+        EditText qtdNumero = entry("Numero", "");
+        qtdNumero.setSingleLine(true);
+        qtdNumero.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        AutoCompleteTextView qtdUnidade = unitEntry(item == null ? "un" : parseQuantityUnit(item.desc));
         AutoCompleteTextView cat = autoEntry(categoryHintFor(""), db.ingredientCategories());
         if (item != null) {
             nome.setText(item.name);
-            qtd.setText(item.desc);
+            qtdNumero.setText(parseQuantityNumber(item.desc));
             cat.setText(item.extra);
         }
         nome.addTextChangedListener(new SimpleWatcher() {
@@ -1224,7 +1583,8 @@ public class MainActivity extends Activity {
             }
         });
         box.addView(nome);
-        box.addView(qtd);
+        box.addView(qtdNumero);
+        box.addView(qtdUnidade);
         box.addView(cat);
         showThemed(themedDialog(title, box)
             .setNegativeButton("Cancelar", null)
@@ -1232,8 +1592,9 @@ public class MainActivity extends Activity {
                 if (blank(nome)) return;
                 int recipeLink = db.findRecipeByName(text(nome), currentReceitaId);
                 String categoria = text(cat);
+                if (categoria.isEmpty()) categoria = suggestedCategoryFor(text(nome));
                 if (recipeLink > 0 && categoria.isEmpty()) categoria = "Receita preparada";
-                db.saveIngrediente(item == null ? 0 : item.id, currentReceitaId, text(nome), text(qtd), categoria, recipeLink);
+                db.saveIngrediente(item == null ? 0 : item.id, currentReceitaId, text(nome), buildQuantity(text(qtdNumero), text(qtdUnidade)), categoria, recipeLink);
                 showReceita(currentReceitaId);
             }));
     }
@@ -1319,7 +1680,7 @@ public class MainActivity extends Activity {
     private LinearLayout header(int icon, String title, String subtitle, Runnable back) {
         LinearLayout box = card();
         box.addView(headerInline(title, back));
-        if (!subtitle.isEmpty()) box.addView(label(subtitle, 14, MUTED, false));
+        if (!subtitle.isEmpty()) box.addView(centeredLabel(subtitle, 14, MUTED, false));
         return box;
     }
 
@@ -1387,7 +1748,7 @@ public class MainActivity extends Activity {
     private LinearLayout empty(String title, String subtitle) {
         LinearLayout box = card();
         box.addView(titleRow(currentFrameIcon(), title, 20));
-        box.addView(label(subtitle, 15, MUTED, false));
+        box.addView(centeredLabel(subtitle, 15, MUTED, false));
         return box;
     }
 
@@ -1442,6 +1803,12 @@ public class MainActivity extends Activity {
         return v;
     }
 
+    private TextView centeredLabel(String text, int sp, int color, boolean bold) {
+        TextView v = label(text, sp, color, bold);
+        v.setGravity(Gravity.CENTER);
+        return v;
+    }
+
     private LinearLayout titleRow(int icon, String title, int sp) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -1449,9 +1816,11 @@ public class MainActivity extends Activity {
         row.setPadding(0, 0, 0, dp(6));
         row.addView(frameIcon(icon, RED, dp(34)), new LinearLayout.LayoutParams(dp(42), dp(42)));
         TextView text = label(title, sp, RED, true);
+        text.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, 1);
-        lp.setMargins(dp(8), 0, 0, 0);
+        lp.setMargins(dp(8), 0, dp(8), 0);
         row.addView(text, lp);
+        row.addView(new Space(this), new LinearLayout.LayoutParams(dp(42), dp(42)));
         return row;
     }
 
@@ -1523,6 +1892,18 @@ public class MainActivity extends Activity {
         return e;
     }
 
+    private AutoCompleteTextView unitEntry(String selected) {
+        AutoCompleteTextView e = autoEntry("Unidade", Arrays.asList("un", "kg", "ml", "a gosto"));
+        e.setThreshold(0);
+        e.setSingleLine(true);
+        e.setText(selected == null || selected.trim().isEmpty() ? "un" : selected.toLowerCase(Locale.ROOT), false);
+        e.setOnClickListener(v -> e.showDropDown());
+        e.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus) e.showDropDown();
+        });
+        return e;
+    }
+
     private MultiAutoCompleteTextView prepEntry(String hint, String value, List<String> values) {
         MultiAutoCompleteTextView e = new MultiAutoCompleteTextView(this);
         e.setHint(hint);
@@ -1542,22 +1923,7 @@ public class MainActivity extends Activity {
     }
 
     private ArrayAdapter<String> textAdapter(List<String> values) {
-        return new ArrayAdapter<String>(this, android.R.layout.simple_dropdown_item_1line, values) {
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                TextView view = (TextView) super.getView(position, convertView, parent);
-                styleAdapterText(view);
-                return view;
-            }
-
-            @Override
-            public View getDropDownView(int position, View convertView, ViewGroup parent) {
-                TextView view = (TextView) super.getDropDownView(position, convertView, parent);
-                styleAdapterText(view);
-                view.setBackgroundColor(PAPER);
-                return view;
-            }
-        };
+        return new NormalizedTextAdapter(normalizedSuggestions(values));
     }
 
     private void styleAdapterText(TextView view) {
@@ -1565,6 +1931,80 @@ public class MainActivity extends Activity {
         view.setHintTextColor(MUTED);
         view.setTextSize(16);
         view.setPadding(dp(14), dp(10), dp(14), dp(10));
+    }
+
+    private ArrayList<String> normalizedSuggestions(List<String> values) {
+        ArrayList<String> out = new ArrayList<>();
+        if (values == null) return out;
+        for (String value : values) {
+            if (value == null || value.trim().isEmpty()) continue;
+            String lower = value.trim().toLowerCase(new Locale("pt", "BR"));
+            if (!containsNorm(out, lower)) out.add(lower);
+        }
+        return out;
+    }
+
+    class NormalizedTextAdapter extends ArrayAdapter<String> {
+        private final ArrayList<String> all;
+        private final ArrayList<String> shown;
+
+        NormalizedTextAdapter(ArrayList<String> values) {
+            super(MainActivity.this, android.R.layout.simple_dropdown_item_1line, values);
+            all = new ArrayList<>(values);
+            shown = new ArrayList<>(values);
+        }
+
+        @Override
+        public int getCount() {
+            return shown.size();
+        }
+
+        @Override
+        public String getItem(int position) {
+            return shown.get(position);
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            TextView view = convertView instanceof TextView ? (TextView) convertView : new TextView(MainActivity.this);
+            view.setText(getItem(position));
+            styleAdapterText(view);
+            return view;
+        }
+
+        @Override
+        public View getDropDownView(int position, View convertView, ViewGroup parent) {
+            TextView view = (TextView) getView(position, convertView, parent);
+            view.setBackgroundColor(PAPER);
+            return view;
+        }
+
+        @Override
+        public Filter getFilter() {
+            return new Filter() {
+                @Override
+                protected FilterResults performFiltering(CharSequence constraint) {
+                    String query = norm(constraint == null ? "" : constraint.toString());
+                    ArrayList<String> filtered = new ArrayList<>();
+                    for (String value : all) {
+                        if (query.isEmpty() || norm(value).contains(query)) filtered.add(value);
+                    }
+                    FilterResults results = new FilterResults();
+                    results.values = filtered;
+                    results.count = filtered.size();
+                    return results;
+                }
+
+                @Override
+                protected void publishResults(CharSequence constraint, FilterResults results) {
+                    shown.clear();
+                    if (results.values instanceof ArrayList) {
+                        shown.addAll((ArrayList<String>) results.values);
+                    }
+                    notifyDataSetChanged();
+                }
+            };
+        }
     }
 
     private GradientDrawable fieldBg() {
@@ -1852,6 +2292,7 @@ public class MainActivity extends Activity {
 
     private ArrayList<String> ingredientNames(List<Item> ingredients) {
         ArrayList<String> names = new ArrayList<>();
+        if (ingredients == null) return names;
         for (Item item : ingredients) addUnique(names, item.name);
         return names;
     }
@@ -1927,9 +2368,39 @@ public class MainActivity extends Activity {
     }
 
     private String categoryHintFor(String ingredientName) {
-        String known = db.categoryForIngredient(ingredientName);
+        String known = suggestedCategoryFor(ingredientName);
         if (!known.isEmpty()) return "Categoria sugerida: " + known;
         return "Categoria (ex: gordura, molho, tempero)";
+    }
+
+    private String suggestedCategoryFor(String ingredientName) {
+        return db.categoryForIngredient(ingredientName);
+    }
+
+    private String buildQuantity(String number, String unit) {
+        String cleanUnit = unit == null ? "" : unit.trim().toLowerCase(Locale.ROOT);
+        if (cleanUnit.isEmpty()) cleanUnit = "un";
+        if ("a gosto".equals(cleanUnit)) return "a gosto";
+        String cleanNumber = number == null ? "" : number.trim();
+        return cleanNumber.isEmpty() ? "" : cleanNumber + " " + cleanUnit;
+    }
+
+    private String parseQuantityUnit(String value) {
+        String clean = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        if (clean.contains("a gosto")) return "a gosto";
+        if (clean.endsWith("kg")) return "kg";
+        if (clean.endsWith("ml")) return "ml";
+        if (clean.endsWith("un")) return "un";
+        return "un";
+    }
+
+    private String parseQuantityNumber(String value) {
+        String clean = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        if (clean.isEmpty() || clean.contains("a gosto")) return "";
+        for (String unit : new String[]{"kg", "ml", "un"}) {
+            if (clean.endsWith(unit)) return clean.substring(0, clean.length() - unit.length()).trim();
+        }
+        return clean;
     }
 
     interface Choice { void pick(int which); }
@@ -2022,7 +2493,7 @@ public class MainActivity extends Activity {
         public void onCreate(SQLiteDatabase db) {
             db.execSQL("CREATE TABLE cadernos(id INTEGER PRIMARY KEY AUTOINCREMENT,nome TEXT NOT NULL,descricao TEXT,criado INTEGER,bloqueado INTEGER NOT NULL DEFAULT 1)");
             db.execSQL("CREATE TABLE categorias(id INTEGER PRIMARY KEY AUTOINCREMENT,caderno_id INTEGER NOT NULL,nome TEXT NOT NULL,descricao TEXT,criado INTEGER,bloqueado INTEGER NOT NULL DEFAULT 1)");
-            db.execSQL("CREATE TABLE receitas(id INTEGER PRIMARY KEY AUTOINCREMENT,caderno_id INTEGER NOT NULL,categoria_id INTEGER NOT NULL,nome TEXT NOT NULL,preparo TEXT,bloqueado INTEGER NOT NULL DEFAULT 1)");
+            db.execSQL("CREATE TABLE receitas(id INTEGER PRIMARY KEY AUTOINCREMENT,caderno_id INTEGER NOT NULL,categoria_id INTEGER NOT NULL,nome TEXT NOT NULL,preparo TEXT,bloqueado INTEGER NOT NULL DEFAULT 0)");
             db.execSQL("CREATE TABLE ingredientes(id INTEGER PRIMARY KEY AUTOINCREMENT,receita_id INTEGER NOT NULL,nome TEXT NOT NULL,quantidade TEXT,categoria TEXT,receita_link_id INTEGER NOT NULL DEFAULT 0,bloqueado INTEGER NOT NULL DEFAULT 1)");
         }
 
@@ -2145,7 +2616,10 @@ public class MainActivity extends Activity {
             v.put("categoria_id", categoria);
             v.put("nome", nome);
             v.put("preparo", preparo);
-            if (id == 0) getWritableDatabase().insert("receitas", null, v);
+            if (id == 0) {
+                v.put("bloqueado", 0);
+                getWritableDatabase().insert("receitas", null, v);
+            }
             else getWritableDatabase().update("receitas", v, "id=?", new String[]{String.valueOf(id)});
         }
 
@@ -2155,6 +2629,7 @@ public class MainActivity extends Activity {
             v.put("categoria_id", categoria);
             v.put("nome", nome);
             v.put("preparo", preparo);
+            v.put("bloqueado", 0);
             return (int) getWritableDatabase().insert("receitas", null, v);
         }
 
