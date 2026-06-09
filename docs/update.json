@@ -1,12 +1,12 @@
 {
-  "versionCode": 8,
-  "versionName": "0.8.0-java",
+  "versionCode": 9,
+  "versionName": "0.9.0-java",
   "critical": false,
   "pageUrl": "https://mbzerker.github.io/CadernoReceitas/",
-  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.8.0-java.apk",
-  "sha256": "2E62C7ED480454A43D51369D1CA9963E6AE01F4D1167067D389FC29FB7CB73AA",
-  "sizeBytes": 17793379,
+  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.9.0-java.apk",
+  "sha256": "441AC231A8DCC83B306441824D4437A53A3CB76B3547C6C0F22749BF409DF0A8",
+  "sizeBytes": 22685876,
   "signatureSha256": "f8dec9a06ec4eaf93a1a9b7f5b5cf73490d54d227f0ee172f83177557c79bfe8",
   "origin": "GitHub Pages oficial do Caderno de Receitas",
-  "changelog": "Protecao contra exclusao acidental com cadeado em todos os itens, confirmacao reforcada para excluir, barra fixa atras da status bar, melhor rolagem com teclado, visualizacao popular da receita com impressao no padrao CompraLink e tela de ingredientes cadastrados no caderno."
+  "changelog": "Teste do caderno ativado: perguntas aleatorias e dificeis estilo Show do Milhao, com pegadinhas sobre receitas, ingredientes e preparo, pontuacao, timer com acrescimo de 10s e tela de game over. Titulos centralizados, cards ajustados para texto completo e botao de teste movido para dentro do caderno."
 }

@@ -51,6 +51,14 @@ public class MainActivity extends Activity {
     private LinearLayout listArea;
     private EditText search;
     private final ArrayDeque<NavState> backStack = new ArrayDeque<>();
+    private final Handler quizHandler = new Handler(Looper.getMainLooper());
+    private final ArrayList<QuizQuestion> quizQuestions = new ArrayList<>();
+    private Runnable quizTick;
+    private TextView quizTimer;
+    private int quizIndex;
+    private int quizScore;
+    private long quizDeadline;
+    private boolean quizGrace;
     private int currentCadernoId;
     private int currentCategoriaId;
     private int currentReceitaId;
@@ -75,6 +83,7 @@ public class MainActivity extends Activity {
     }
 
     private void base(int background) {
+        stopQuizTimer();
         configureSystemBars();
         FrameLayout frame = new FrameLayout(this);
         ImageView bg = new ImageView(this);
@@ -113,7 +122,6 @@ public class MainActivity extends Activity {
         actions.addView(label("Organize cadernos, grupos, receitas e ingredientes.", 14, MUTED, false));
         LinearLayout row = iconStrip();
         addWeightedStripIcon(row, R.drawable.ic_plus, RED, "Novo caderno", v -> newCaderno());
-        addWeightedStripIcon(row, R.drawable.ic_report, RED_DARK, "Teste", v -> toast("Teste mantido para migracao futura."));
         addWeightedStripIcon(row, R.drawable.ic_update, GOLD, "Atualizar", v -> checkUpdate());
         actions.addView(row, actionStripParams());
         root.addView(actions);
@@ -152,6 +160,7 @@ public class MainActivity extends Activity {
         LinearLayout cadernoActions = iconStrip();
         addWeightedStripIcon(cadernoActions, R.drawable.ic_plus, RED, "Adicionar grupo", v -> newCategoria());
         addWeightedStripIcon(cadernoActions, R.drawable.ic_clipboard_list, GOLD, "Ingredientes cadastrados", v -> showIngredientesCaderno());
+        addWeightedStripIcon(cadernoActions, R.drawable.ic_report, RED_DARK, "Teste", v -> startQuizOrExplain());
         add.addView(cadernoActions, actionStripParams());
         root.addView(add);
 
@@ -289,6 +298,237 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void startQuizOrExplain() {
+        int total = db.countReceitasCaderno(currentCadernoId);
+        if (total < 5) {
+            toast("Teste bloqueado: cadastre pelo menos 5 receitas neste caderno.");
+            return;
+        }
+        quizQuestions.clear();
+        quizQuestions.addAll(buildQuizQuestions());
+        if (quizQuestions.size() < 5) {
+            showThemed(themedDialog("Teste bloqueado", null)
+                .setMessage("Cadastre ingredientes e modo de preparo em mais receitas para gerar perguntas realmente dificeis.")
+                .setPositiveButton("Entendi", null));
+            return;
+        }
+        Collections.shuffle(quizQuestions);
+        while (quizQuestions.size() > 12) quizQuestions.remove(quizQuestions.size() - 1);
+        quizIndex = 0;
+        quizScore = 0;
+        showQuizQuestion();
+    }
+
+    private ArrayList<QuizQuestion> buildQuizQuestions() {
+        ArrayList<QuizQuestion> out = new ArrayList<>();
+        Random random = new Random();
+        List<Item> recipes = db.receitasCaderno(currentCadernoId);
+        ArrayList<String> allIngredients = new ArrayList<>();
+        HashMap<Integer, List<Item>> ingredientsByRecipe = new HashMap<>();
+        for (Item recipe : recipes) {
+            List<Item> ingredients = db.ingredientes(recipe.id, "");
+            ingredientsByRecipe.put(recipe.id, ingredients);
+            for (Item ingredient : ingredients) addUnique(allIngredients, ingredient.name);
+        }
+
+        for (Item recipe : recipes) {
+            List<Item> ingredients = ingredientsByRecipe.get(recipe.id);
+            if (ingredients == null || ingredients.size() < 2) continue;
+            ArrayList<String> recipeIngredients = ingredientNames(ingredients);
+            String correctIngredient = recipeIngredients.get(random.nextInt(recipeIngredients.size()));
+            ArrayList<String> distractors = withoutNormalized(allIngredients, recipeIngredients);
+            addQuestion(out, "Na receita \"" + recipe.name + "\", qual ingrediente parece plausivel, mas e o verdadeiro detalhe da ficha?", correctIngredient, pickDistractors(distractors, correctIngredient, 3));
+
+            if (recipeIngredients.size() >= 3 && !distractors.isEmpty()) {
+                String intruder = distractors.get(random.nextInt(distractors.size()));
+                ArrayList<String> wrong = pickDistractors(recipeIngredients, intruder, 3);
+                addQuestion(out, "Qual alternativa NAO pertence a \"" + recipe.name + "\"?", intruder, wrong);
+            }
+
+            if (recipeIngredients.size() >= 2) {
+                Collections.shuffle(recipeIngredients);
+                String a = recipeIngredients.get(0);
+                String b = recipeIngredients.get(1);
+                ArrayList<String> recipeNames = new ArrayList<>();
+                for (Item other : recipes) {
+                    if (other.id != recipe.id) addUnique(recipeNames, other.name);
+                }
+                addQuestion(out, "Qual receita usa ao mesmo tempo \"" + a + "\" e \"" + b + "\"?", recipe.name, pickDistractors(recipeNames, recipe.name, 3));
+            }
+
+            if (!recipe.desc.isEmpty()) {
+                ArrayList<String> prepDistractors = new ArrayList<>();
+                ArrayList<String> recipeDistractors = new ArrayList<>();
+                for (Item other : recipes) {
+                    if (other.id == recipe.id) continue;
+                    if (!other.desc.isEmpty()) addUnique(prepDistractors, prepSnippet(other.desc));
+                    addUnique(recipeDistractors, other.name);
+                }
+                addQuestion(out, "Qual trecho de preparo pertence a \"" + recipe.name + "\"?", prepSnippet(recipe.desc), pickDistractors(prepDistractors, prepSnippet(recipe.desc), 3));
+                addQuestion(out, "Esta instrucao entrega uma receita, mas tenta parecer generica: \"" + prepSnippet(recipe.desc) + "\". Qual e a receita?", recipe.name, pickDistractors(recipeDistractors, recipe.name, 3));
+            }
+        }
+        return out;
+    }
+
+    private void addQuestion(ArrayList<QuizQuestion> out, String prompt, String correct, ArrayList<String> distractors) {
+        if (correct == null || correct.trim().isEmpty() || distractors.size() < 3) return;
+        ArrayList<String> options = new ArrayList<>();
+        options.add(correct);
+        for (String value : distractors) {
+            if (options.size() == 4) break;
+            if (!containsNorm(options, value)) options.add(value);
+        }
+        if (options.size() < 4) return;
+        Collections.shuffle(options);
+        out.add(new QuizQuestion(prompt, options, indexOfNorm(options, correct)));
+    }
+
+    private void showQuizQuestion() {
+        screen = "quiz";
+        if (quizIndex >= quizQuestions.size()) {
+            showQuizResult();
+            return;
+        }
+        base(R.drawable.bg_quiz);
+        QuizQuestion question = quizQuestions.get(quizIndex);
+
+        LinearLayout top = card();
+        TextView title = label("Teste do Caderno", 24, RED, true);
+        title.setGravity(Gravity.CENTER);
+        top.addView(title);
+        quizTimer = label("", 18, RED_DARK, true);
+        quizTimer.setGravity(Gravity.CENTER);
+        top.addView(quizTimer);
+        TextView progress = label("Pergunta " + (quizIndex + 1) + " de " + quizQuestions.size() + "  |  Pontos: " + quizScore, 14, MUTED, true);
+        progress.setGravity(Gravity.CENTER);
+        top.addView(progress);
+        root.addView(top);
+
+        LinearLayout questionCard = card();
+        TextView q = label(question.prompt, 20, INK, true);
+        q.setGravity(Gravity.CENTER);
+        questionCard.addView(q);
+        root.addView(questionCard);
+
+        String[] letters = {"A", "B", "C", "D"};
+        for (int i = 0; i < question.options.size(); i++) {
+            final int choice = i;
+            root.addView(quizOption(letters[i] + ". " + question.options.get(i), () -> answerQuiz(choice)));
+        }
+        startQuizTimer();
+    }
+
+    private TextView quizOption(String value, Runnable action) {
+        TextView option = label(value, 17, INK, true);
+        option.setPadding(dp(16), dp(16), dp(16), dp(16));
+        option.setBackground(round(CARD_STRONG, dp(18), LINE, 1));
+        option.setMinHeight(dp(68));
+        option.setGravity(Gravity.CENTER_VERTICAL);
+        option.setOnClickListener(v -> {
+            v.setEnabled(false);
+            action.run();
+        });
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.setMargins(0, 0, 0, dp(12));
+        option.setLayoutParams(params);
+        return option;
+    }
+
+    private void startQuizTimer() {
+        stopQuizTimer();
+        quizGrace = false;
+        quizDeadline = System.currentTimeMillis() + 30000;
+        quizTick = () -> {
+            long left = quizDeadline - System.currentTimeMillis();
+            if (left < 0) {
+                if (!quizGrace) {
+                    quizGrace = true;
+                    quizDeadline = System.currentTimeMillis() + 10000;
+                    left = 10000;
+                } else {
+                    showGameOver("Tempo esgotado.");
+                    return;
+                }
+            }
+            if (quizTimer != null) {
+                long seconds = Math.max(0, (left + 999) / 1000);
+                quizTimer.setText(quizGrace ? "Acrescimo: " + seconds + "s" : "Tempo: " + seconds + "s");
+            }
+            quizHandler.postDelayed(quizTick, 250);
+        };
+        quizHandler.post(quizTick);
+    }
+
+    private void stopQuizTimer() {
+        if (quizTick != null) quizHandler.removeCallbacks(quizTick);
+        quizTick = null;
+    }
+
+    private void answerQuiz(int choice) {
+        stopQuizTimer();
+        QuizQuestion question = quizQuestions.get(quizIndex);
+        if (choice != question.correctIndex) {
+            showGameOver("Resposta incorreta.");
+            return;
+        }
+        quizScore += quizGrace ? 5 : 10;
+        quizIndex++;
+        showQuizQuestion();
+    }
+
+    private void showQuizResult() {
+        stopQuizTimer();
+        screen = "quiz_result";
+        base(R.drawable.bg_quiz);
+        LinearLayout result = card();
+        TextView title = label("Resultado", 26, RED, true);
+        title.setGravity(Gravity.CENTER);
+        result.addView(title);
+        TextView score = label("Pontuacao final: " + quizScore + " pontos", 22, INK, true);
+        score.setGravity(Gravity.CENTER);
+        result.addView(score);
+        TextView detail = label("Voce passou pelo teste sem cair nas pegadinhas.", 15, MUTED, false);
+        detail.setGravity(Gravity.CENTER);
+        result.addView(detail);
+        LinearLayout row = iconStrip();
+        addWeightedStripIcon(row, R.drawable.ic_back, RED, "Voltar", v -> showCaderno(currentCadernoId));
+        addWeightedStripIcon(row, R.drawable.ic_report, RED_DARK, "Novo teste", v -> startQuizOrExplain());
+        result.addView(row, actionStripParams());
+        root.addView(result);
+    }
+
+    private void showGameOver(String reason) {
+        stopQuizTimer();
+        screen = "game_over";
+        configureSystemBars();
+        FrameLayout frame = new FrameLayout(this);
+        ImageView bg = new ImageView(this);
+        bg.setImageResource(R.drawable.game_over);
+        bg.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        frame.addView(bg, new FrameLayout.LayoutParams(-1, -1));
+        LinearLayout overlay = new LinearLayout(this);
+        overlay.setOrientation(LinearLayout.VERTICAL);
+        overlay.setPadding(dp(14), statusBarHeight() + dp(14), dp(14), dp(18));
+        ImageButton back = imageIconButton(R.drawable.ic_back, RED, Color.WHITE);
+        back.setContentDescription("Voltar");
+        back.setOnClickListener(v -> showCaderno(currentCadernoId));
+        overlay.addView(back, new LinearLayout.LayoutParams(dp(52), dp(52)));
+        Space spacer = new Space(this);
+        overlay.addView(spacer, new LinearLayout.LayoutParams(1, 0, 1));
+        LinearLayout card = card();
+        TextView title = label("Game over", 28, RED, true);
+        title.setGravity(Gravity.CENTER);
+        card.addView(title);
+        TextView msg = label(reason + " Pontuacao: " + quizScore + " pontos.", 16, INK, true);
+        msg.setGravity(Gravity.CENTER);
+        card.addView(msg);
+        overlay.addView(card);
+        frame.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
+        frame.addView(statusBarShield(), new FrameLayout.LayoutParams(-1, statusBarHeight(), Gravity.TOP));
+        setContentView(frame);
+    }
+
     private void showRecipePreview(int id) {
         screen = "recipe_preview";
         currentReceitaId = id;
@@ -362,7 +602,7 @@ public class MainActivity extends Activity {
             page.addView(printText("Nenhum ingrediente cadastrado.", 15, false), matchWrapWithTop(dp(6)));
         } else {
             for (Item ingredient : ingredients) {
-                page.addView(printText("• " + ingredientLine(ingredient), 15, false), matchWrapWithTop(dp(7)));
+                page.addView(printText("* " + ingredientLine(ingredient), 15, false), matchWrapWithTop(dp(7)));
             }
         }
 
@@ -705,7 +945,10 @@ public class MainActivity extends Activity {
         backButton.setContentDescription("Voltar");
         backButton.setOnClickListener(v -> back.run());
         row.addView(backButton, new LinearLayout.LayoutParams(dp(56), dp(56)));
-        row.addView(label(title, 24, RED, true), weight());
+        TextView titleText = label(title, 24, RED, true);
+        titleText.setGravity(Gravity.CENTER);
+        row.addView(titleText, new LinearLayout.LayoutParams(0, -2, 1));
+        row.addView(new Space(this), new LinearLayout.LayoutParams(dp(56), dp(56)));
         return row;
     }
 
@@ -719,7 +962,9 @@ public class MainActivity extends Activity {
         text.addView(label(title, 18, INK, true));
         if (!subtitle.isEmpty()) text.addView(label(subtitle, 14, MUTED, false));
         if (!extra.isEmpty()) text.addView(label(extra, 14, RED, true));
-        row.addView(text, weight());
+        LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, -2, 1);
+        textParams.setMargins(dp(8), 0, dp(6), 0);
+        row.addView(text, textParams);
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.VERTICAL);
         actions.setGravity(Gravity.CENTER);
@@ -800,6 +1045,7 @@ public class MainActivity extends Activity {
         v.setTextSize(sp);
         v.setTextColor(color);
         v.setIncludeFontPadding(true);
+        v.setSingleLine(false);
         if (bold) v.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         return v;
     }
@@ -837,9 +1083,15 @@ public class MainActivity extends Activity {
     }
 
     private AlertDialog.Builder themedDialog(String title, View view) {
-        return new AlertDialog.Builder(this)
-            .setTitle(title)
-            .setView(view);
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        if (title != null && !title.isEmpty()) {
+            TextView titleView = label(title, 20, RED, true);
+            titleView.setGravity(Gravity.CENTER);
+            titleView.setPadding(dp(18), dp(18), dp(18), dp(2));
+            builder.setCustomTitle(titleView);
+        }
+        if (view != null) builder.setView(view);
+        return builder;
     }
 
     private AlertDialog showThemed(AlertDialog.Builder builder) {
@@ -1164,7 +1416,8 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if ("recipe_preview".equals(screen)) showCategoria(currentCategoriaId);
+        if ("quiz".equals(screen) || "quiz_result".equals(screen) || "game_over".equals(screen)) showCaderno(currentCadernoId);
+        else if ("recipe_preview".equals(screen)) showCategoria(currentCategoriaId);
         else if ("ingredientes_caderno".equals(screen)) showCaderno(currentCadernoId);
         else if ("receita".equals(screen)) backFromReceita();
         else if ("categoria".equals(screen)) showCaderno(currentCadernoId);
@@ -1203,6 +1456,62 @@ public class MainActivity extends Activity {
     private String norm(String s) {
         String n = Normalizer.normalize(s == null ? "" : s, Normalizer.Form.NFD);
         return n.replaceAll("\\p{InCombiningDiacriticalMarks}+", "").toLowerCase(Locale.ROOT);
+    }
+
+    private ArrayList<String> ingredientNames(List<Item> ingredients) {
+        ArrayList<String> names = new ArrayList<>();
+        for (Item item : ingredients) addUnique(names, item.name);
+        return names;
+    }
+
+    private void addUnique(List<String> values, String value) {
+        if (value == null || value.trim().isEmpty()) return;
+        if (!containsNorm(values, value)) values.add(value.trim());
+    }
+
+    private ArrayList<String> withoutNormalized(List<String> source, List<String> excluded) {
+        ArrayList<String> out = new ArrayList<>();
+        for (String value : source) {
+            if (!containsNorm(excluded, value)) addUnique(out, value);
+        }
+        return out;
+    }
+
+    private ArrayList<String> pickDistractors(List<String> source, String correct, int count) {
+        ArrayList<String> pool = new ArrayList<>();
+        for (String value : source) {
+            if (!norm(value).equals(norm(correct))) addUnique(pool, value);
+        }
+        Collections.shuffle(pool);
+        ArrayList<String> out = new ArrayList<>();
+        for (String value : pool) {
+            if (out.size() == count) break;
+            out.add(value);
+        }
+        return out;
+    }
+
+    private boolean containsNorm(List<String> values, String value) {
+        String wanted = norm(value);
+        for (String existing : values) {
+            if (norm(existing).equals(wanted)) return true;
+        }
+        return false;
+    }
+
+    private int indexOfNorm(List<String> values, String value) {
+        String wanted = norm(value);
+        for (int i = 0; i < values.size(); i++) {
+            if (norm(values.get(i)).equals(wanted)) return i;
+        }
+        return 0;
+    }
+
+    private String prepSnippet(String value) {
+        String clean = value == null ? "" : value.replace("\r", " ").replace("\n", " ").trim();
+        while (clean.contains("  ")) clean = clean.replace("  ", " ");
+        if (clean.length() > 110) return clean.substring(0, 107).trim() + "...";
+        return clean;
     }
 
     private void openLinkedReceita(int recipeId) {
@@ -1282,6 +1591,18 @@ public class MainActivity extends Activity {
         }
     }
 
+    static class QuizQuestion {
+        final String prompt;
+        final ArrayList<String> options;
+        final int correctIndex;
+
+        QuizQuestion(String prompt, ArrayList<String> options, int correctIndex) {
+            this.prompt = prompt;
+            this.options = options;
+            this.correctIndex = correctIndex;
+        }
+    }
+
     static class Item {
         int id;
         int parentId;
@@ -1356,6 +1677,10 @@ public class MainActivity extends Activity {
 
         List<Item> receitas(int categoria, String q) {
             return list("SELECT id,nome,preparo descricao,'' extra,categoria_id parent_id,caderno_id,0 receita_link_id,bloqueado FROM receitas WHERE categoria_id=" + categoria + " ORDER BY nome", q);
+        }
+
+        List<Item> receitasCaderno(int caderno) {
+            return list("SELECT id,nome,preparo descricao,'' extra,categoria_id parent_id,caderno_id,0 receita_link_id,bloqueado FROM receitas WHERE caderno_id=" + caderno + " ORDER BY nome", "");
         }
 
         List<Item> ingredientes(int receita, String q) {
