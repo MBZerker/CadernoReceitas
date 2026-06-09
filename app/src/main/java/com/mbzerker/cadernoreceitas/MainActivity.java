@@ -11,10 +11,15 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
 import android.net.Uri;
+import android.print.PrintAttributes;
+import android.print.PrintDocumentAdapter;
+import android.print.PrintManager;
 import android.provider.Settings;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.*;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.*;
 
 import androidx.core.content.FileProvider;
@@ -79,11 +84,14 @@ public class MainActivity extends Activity {
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(false);
+        scroll.setClipToPadding(false);
+        scroll.setPadding(0, 0, 0, dp(220));
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16), statusBarHeight() + dp(14), dp(16), dp(24));
+        root.setPadding(dp(16), statusBarHeight() + dp(14), dp(16), dp(120));
         scroll.addView(root);
         frame.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
+        frame.addView(statusBarShield(), new FrameLayout.LayoutParams(-1, statusBarHeight(), Gravity.TOP));
         setContentView(frame);
     }
 
@@ -125,9 +133,8 @@ public class MainActivity extends Activity {
             return;
         }
         for (Item c : items) {
-            LinearLayout card = itemCard(R.drawable.ic_book, c.name, c.desc, db.countReceitasCaderno(c.id) + " receitas", () -> showCaderno(c.id));
+            LinearLayout card = itemCard(R.drawable.ic_book, c.name, c.desc, db.countReceitasCaderno(c.id) + " receitas", c.locked, () -> showCaderno(c.id), () -> toggleLock("cadernos", c, this::renderHomeList), () -> menuCaderno(c));
             card.setOnLongClickListener(v -> { menuCaderno(c); return true; });
-            addMenuButton(card, () -> menuCaderno(c));
             listArea.addView(card);
         }
     }
@@ -142,7 +149,10 @@ public class MainActivity extends Activity {
         LinearLayout add = card();
         add.addView(titleRow(R.drawable.ic_category, "Grupo", 20));
         add.addView(label("Crie grupos para separar massas, doces, molhos e outros preparos.", 14, MUTED, false));
-        addActionButton(add, R.drawable.ic_plus, "Adicionar grupo", v -> newCategoria());
+        LinearLayout cadernoActions = iconStrip();
+        addWeightedStripIcon(cadernoActions, R.drawable.ic_plus, RED, "Adicionar grupo", v -> newCategoria());
+        addWeightedStripIcon(cadernoActions, R.drawable.ic_clipboard_list, GOLD, "Ingredientes cadastrados", v -> showIngredientesCaderno());
+        add.addView(cadernoActions, actionStripParams());
         root.addView(add);
 
         addSearch("Pesquisar grupos", this::renderCategorias);
@@ -160,9 +170,34 @@ public class MainActivity extends Activity {
             return;
         }
         for (Item item : items) {
-            LinearLayout card = itemCard(R.drawable.ic_category, item.name, item.desc, db.countReceitasCategoria(item.id) + " receitas", () -> showCategoria(item.id));
+            LinearLayout card = itemCard(R.drawable.ic_category, item.name, item.desc, db.countReceitasCategoria(item.id) + " receitas", item.locked, () -> showCategoria(item.id), () -> toggleLock("categorias", item, this::renderCategorias), () -> menuCategoria(item));
             card.setOnLongClickListener(v -> { menuCategoria(item); return true; });
-            addMenuButton(card, () -> menuCategoria(item));
+            listArea.addView(card);
+        }
+    }
+
+    private void showIngredientesCaderno() {
+        screen = "ingredientes_caderno";
+        base(R.drawable.bg_ingredientes);
+        root.addView(header(R.drawable.ic_clipboard_list, "Ingredientes cadastrados", "Todos os ingredientes deste caderno.", () -> showCaderno(currentCadernoId)));
+        addSearch("Pesquisar ingredientes", this::renderIngredientesCaderno);
+        listArea = new LinearLayout(this);
+        listArea.setOrientation(LinearLayout.VERTICAL);
+        root.addView(listArea);
+        renderIngredientesCaderno();
+    }
+
+    private void renderIngredientesCaderno() {
+        listArea.removeAllViews();
+        List<Item> items = db.ingredientesCaderno(currentCadernoId, text(search));
+        if (items.isEmpty()) {
+            listArea.addView(empty("Nenhum ingrediente cadastrado.", "Os ingredientes aparecem aqui conforme forem adicionados nas receitas."));
+            return;
+        }
+        for (Item item : items) {
+            LinearLayout card = itemCard(item.recipeLinkId > 0 ? R.drawable.ic_link : R.drawable.ic_ingredient, item.name, item.desc, item.extra, item.locked, () -> showReceita(item.parentId), () -> toggleLock("ingredientes", item, this::renderIngredientesCaderno), () -> menuIngredienteCatalogo(item));
+            if (item.recipeLinkId > 0) markLinkedIngredient(card);
+            card.setOnLongClickListener(v -> { menuIngredienteCatalogo(item); return true; });
             listArea.addView(card);
         }
     }
@@ -196,9 +231,11 @@ public class MainActivity extends Activity {
             return;
         }
         for (Item item : items) {
-            LinearLayout card = itemCard(R.drawable.ic_recipe, item.name, item.desc, db.countIngredientes(item.id) + " ingredientes", () -> showReceita(item.id));
+            LinearLayout card = itemCard(R.drawable.ic_recipe, item.name, item.desc, db.countIngredientes(item.id) + " ingredientes", item.locked, () -> {
+                if (item.locked) showRecipePreview(item.id);
+                else showReceita(item.id);
+            }, () -> toggleLock("receitas", item, this::renderReceitas), () -> menuReceita(item));
             card.setOnLongClickListener(v -> { menuReceita(item); return true; });
-            addMenuButton(card, () -> menuReceita(item));
             listArea.addView(card);
         }
     }
@@ -243,14 +280,176 @@ public class MainActivity extends Activity {
             return;
         }
         for (Item item : items) {
-            LinearLayout card = itemCard(item.recipeLinkId > 0 ? R.drawable.ic_link : R.drawable.ic_ingredient, item.name, item.desc, item.extra, item.recipeLinkId > 0 ? () -> openLinkedReceita(item.recipeLinkId) : null);
+            LinearLayout card = itemCard(item.recipeLinkId > 0 ? R.drawable.ic_link : R.drawable.ic_ingredient, item.name, item.desc, item.extra, item.locked, item.recipeLinkId > 0 ? () -> openLinkedReceita(item.recipeLinkId) : null, () -> toggleLock("ingredientes", item, this::renderIngredientes), () -> menuIngrediente(item));
             if (item.recipeLinkId > 0) {
                 markLinkedIngredient(card);
             }
             card.setOnLongClickListener(v -> { menuIngrediente(item); return true; });
-            addMenuButton(card, () -> menuIngrediente(item));
             listArea.addView(card);
         }
+    }
+
+    private void showRecipePreview(int id) {
+        screen = "recipe_preview";
+        currentReceitaId = id;
+        Item receita = db.getReceita(id);
+        currentCategoriaId = receita.parentId;
+        currentCadernoId = receita.cadernoId;
+        configureSystemBars();
+
+        FrameLayout frame = new FrameLayout(this);
+        frame.setBackgroundColor(PAPER);
+        LinearLayout screenView = new LinearLayout(this);
+        screenView.setOrientation(LinearLayout.VERTICAL);
+        screenView.setPadding(dp(14), statusBarHeight() + dp(14), dp(14), dp(18));
+
+        addPrintPreviewToolbar(screenView, () -> showCategoria(currentCategoriaId), () -> printHtml("Receita - " + receita.name, buildRecipePrintHtml(receita)));
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(false);
+        scroll.setClipToPadding(false);
+        scroll.setPadding(0, 0, 0, dp(220));
+        LinearLayout page = printPage();
+        fillRecipePreview(page, receita);
+        int pageWidth = Math.min(getResources().getDisplayMetrics().widthPixels - dp(28), dp(430));
+        LinearLayout.LayoutParams pageParams = new LinearLayout.LayoutParams(pageWidth, -2);
+        pageParams.gravity = Gravity.CENTER_HORIZONTAL;
+        pageParams.setMargins(0, dp(12), 0, dp(40));
+        scroll.addView(page, pageParams);
+        screenView.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        frame.addView(screenView, new FrameLayout.LayoutParams(-1, -1));
+        frame.addView(statusBarShield(), new FrameLayout.LayoutParams(-1, statusBarHeight(), Gravity.TOP));
+        setContentView(frame);
+    }
+
+    private void addPrintPreviewToolbar(LinearLayout screenView, Runnable closeAction, Runnable printAction) {
+        LinearLayout toolbar = new LinearLayout(this);
+        toolbar.setOrientation(LinearLayout.HORIZONTAL);
+        toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        ImageButton back = imageIconButton(R.drawable.ic_back, RED, Color.WHITE);
+        back.setContentDescription("Voltar");
+        back.setOnClickListener(v -> closeAction.run());
+        toolbar.addView(back, new LinearLayout.LayoutParams(dp(48), dp(48)));
+
+        View spacer = new View(this);
+        toolbar.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1));
+
+        ImageButton print = imageIconButton(R.drawable.ic_print, RED_DARK, Color.WHITE);
+        print.setContentDescription("Imprimir");
+        print.setOnClickListener(v -> printAction.run());
+        toolbar.addView(print, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        screenView.addView(toolbar, new LinearLayout.LayoutParams(-1, dp(48)));
+    }
+
+    private LinearLayout printPage() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setPadding(dp(28), dp(32), dp(28), dp(32));
+        page.setBackgroundColor(Color.WHITE);
+        page.setMinimumHeight(dp(560));
+        return page;
+    }
+
+    private void fillRecipePreview(LinearLayout page, Item receita) {
+        TextView title = printText(receita.name, 24, true);
+        title.setGravity(Gravity.CENTER);
+        page.addView(title, matchWrap());
+
+        List<Item> ingredients = db.ingredientes(receita.id, "");
+        page.addView(printText("Ingredientes", 18, true), matchWrapWithTop(dp(24)));
+        if (ingredients.isEmpty()) {
+            page.addView(printText("Nenhum ingrediente cadastrado.", 15, false), matchWrapWithTop(dp(6)));
+        } else {
+            for (Item ingredient : ingredients) {
+                page.addView(printText("• " + ingredientLine(ingredient), 15, false), matchWrapWithTop(dp(7)));
+            }
+        }
+
+        page.addView(printText("Modo de preparo", 18, true), matchWrapWithTop(dp(24)));
+        page.addView(printText(receita.desc.isEmpty() ? "Modo de preparo nao cadastrado." : receita.desc, 15, false), matchWrapWithTop(dp(7)));
+    }
+
+    private TextView printText(String value, int size, boolean bold) {
+        TextView text = new TextView(this);
+        text.setText(value == null ? "" : value);
+        text.setTextColor(Color.BLACK);
+        text.setTextSize(size);
+        text.setLineSpacing(0, 1.16f);
+        if (bold) text.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        return text;
+    }
+
+    private String ingredientLine(Item ingredient) {
+        StringBuilder line = new StringBuilder();
+        if (!ingredient.desc.isEmpty()) line.append(ingredient.desc).append(" - ");
+        line.append(ingredient.name);
+        if (!ingredient.extra.isEmpty()) line.append(" (").append(ingredient.extra).append(")");
+        if (ingredient.recipeLinkId > 0) line.append(" - receita vinculada");
+        return line.toString();
+    }
+
+    private void printHtml(String jobName, String html) {
+        PrintManager manager = (PrintManager) getSystemService(Context.PRINT_SERVICE);
+        if (manager == null) {
+            toast("Impressao indisponivel neste aparelho.");
+            return;
+        }
+        WebView webView = new WebView(this);
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                PrintDocumentAdapter adapter = view.createPrintDocumentAdapter(jobName);
+                PrintAttributes attributes = new PrintAttributes.Builder()
+                        .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+                        .setColorMode(PrintAttributes.COLOR_MODE_COLOR)
+                        .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+                        .build();
+                manager.print(jobName, adapter, attributes);
+            }
+        });
+        webView.loadDataWithBaseURL(null, html, "text/HTML", "UTF-8", null);
+    }
+
+    private String buildRecipePrintHtml(Item receita) {
+        StringBuilder html = printHtmlStart(receita.name);
+        html.append("<h1>").append(escapeHtml(receita.name)).append("</h1>");
+        html.append("<h2>Ingredientes</h2>");
+        List<Item> ingredients = db.ingredientes(receita.id, "");
+        if (ingredients.isEmpty()) {
+            html.append("<p>Nenhum ingrediente cadastrado.</p>");
+        } else {
+            for (Item ingredient : ingredients) {
+                html.append("<p class=\"item\">&bull; ")
+                        .append(escapeHtml(ingredientLine(ingredient)))
+                        .append("</p>");
+            }
+        }
+        html.append("<h2>Modo de preparo</h2><p>")
+                .append(escapeHtml(receita.desc.isEmpty() ? "Modo de preparo nao cadastrado." : receita.desc).replace("\n", "<br>"))
+                .append("</p></body></html>");
+        return html.toString();
+    }
+
+    private StringBuilder printHtmlStart(String title) {
+        StringBuilder html = new StringBuilder();
+        html.append("<!doctype html><html><head><meta charset=\"utf-8\"><title>")
+                .append(escapeHtml(title))
+                .append("</title><style>")
+                .append("@page{size:A4;margin:18mm;}body{font-family:Arial,sans-serif;color:#000;background:#fff;font-size:14pt;line-height:1.35;}")
+                .append("h1{text-align:center;font-size:22pt;margin:0 0 18pt;}h2{font-size:17pt;margin:20pt 0 8pt;}")
+                .append("p{margin:4pt 0;}.item{margin:0 0 10pt;}span{font-size:13pt;}")
+                .append("</style></head><body>");
+        return html;
+    }
+
+    private String escapeHtml(String value) {
+        if (value == null) return "";
+        return value.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
     }
 
     private void newCaderno() {
@@ -303,28 +502,39 @@ public class MainActivity extends Activity {
     private void menuCaderno(Item item) {
         actions(item.name, new String[]{"Editar", "Excluir"}, which -> {
             if (which == 0) editCaderno(item);
-            if (which == 1) confirm("Excluir caderno", "Excluir este caderno e todo o conteudo?", () -> { db.deleteCaderno(item.id); renderHomeList(); });
+            if (which == 1) confirmDelete("cadernos", item, "caderno", "Excluir este caderno e todo o conteudo?", () -> { db.deleteCaderno(item.id); renderHomeList(); });
         });
     }
 
     private void menuCategoria(Item item) {
         actions(item.name, new String[]{"Editar", "Excluir"}, which -> {
             if (which == 0) editCategoria(item);
-            if (which == 1) confirm("Excluir grupo", "Excluir este grupo e suas receitas?", () -> { db.deleteCategoria(item.id); renderCategorias(); });
+            if (which == 1) confirmDelete("categorias", item, "grupo", "Excluir este grupo e suas receitas?", () -> { db.deleteCategoria(item.id); renderCategorias(); });
         });
     }
 
     private void menuReceita(Item item) {
         actions(item.name, new String[]{"Editar", "Excluir"}, which -> {
             if (which == 0) editReceita(item);
-            if (which == 1) confirm("Excluir receita", "Excluir esta receita e seus ingredientes?", () -> { db.deleteReceita(item.id); renderReceitas(); });
+            if (which == 1) confirmDelete("receitas", item, "receita", "Excluir esta receita e seus ingredientes?", () -> { db.deleteReceita(item.id); renderReceitas(); });
         });
     }
 
     private void menuIngrediente(Item item) {
         actions(item.name, new String[]{"Editar", "Excluir"}, which -> {
             if (which == 0) editIngrediente(item);
-            if (which == 1) confirm("Excluir ingrediente", "Excluir este ingrediente?", () -> { db.delete("ingredientes", item.id); renderIngredientes(); });
+            if (which == 1) confirmDelete("ingredientes", item, "ingrediente", "Excluir este ingrediente?", () -> { db.delete("ingredientes", item.id); renderIngredientes(); });
+        });
+    }
+
+    private void menuIngredienteCatalogo(Item item) {
+        actions(item.name, new String[]{"Abrir receita", "Editar", "Excluir"}, which -> {
+            if (which == 0) showReceita(item.parentId);
+            if (which == 1) {
+                currentReceitaId = item.parentId;
+                editIngrediente(item);
+            }
+            if (which == 2) confirmDelete("ingredientes", item, "ingrediente", "Excluir este ingrediente?", () -> { db.delete("ingredientes", item.id); renderIngredientesCaderno(); });
         });
     }
 
@@ -476,7 +686,7 @@ public class MainActivity extends Activity {
 
     private LinearLayout header(int icon, String title, String subtitle, Runnable back) {
         LinearLayout box = card();
-        box.addView(headerInline(icon, title, back));
+        box.addView(headerInline(title, back));
         if (!subtitle.isEmpty()) box.addView(label(subtitle, 14, MUTED, false));
         return box;
     }
@@ -489,18 +699,17 @@ public class MainActivity extends Activity {
         card.setBackground(bg);
     }
 
-    private LinearLayout headerInline(int icon, String title, Runnable back) {
+    private LinearLayout headerInline(String title, Runnable back) {
         LinearLayout row = hrow();
         ImageButton backButton = imageIconButton(R.drawable.ic_back, RED, Color.WHITE);
         backButton.setContentDescription("Voltar");
         backButton.setOnClickListener(v -> back.run());
         row.addView(backButton, new LinearLayout.LayoutParams(dp(56), dp(56)));
-        row.addView(frameIcon(icon, GOLD, dp(44)), new LinearLayout.LayoutParams(dp(48), dp(56)));
         row.addView(label(title, 24, RED, true), weight());
         return row;
     }
 
-    private LinearLayout itemCard(int icon, String title, String subtitle, String extra, Runnable tap) {
+    private LinearLayout itemCard(int icon, String title, String subtitle, String extra, boolean locked, Runnable tap, Runnable lockAction, Runnable menuAction) {
         LinearLayout box = card();
         box.setPadding(dp(12), dp(12), dp(12), dp(12));
         LinearLayout row = hrow();
@@ -511,6 +720,21 @@ public class MainActivity extends Activity {
         if (!subtitle.isEmpty()) text.addView(label(subtitle, 14, MUTED, false));
         if (!extra.isEmpty()) text.addView(label(extra, 14, RED, true));
         row.addView(text, weight());
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.VERTICAL);
+        actions.setGravity(Gravity.CENTER);
+        ImageButton lock = plainIconButton(locked ? R.drawable.ic_lock_closed : R.drawable.ic_lock_open, locked ? RED_DARK : GOLD, dp(3));
+        lock.setContentDescription(locked ? "Protegido" : "Desprotegido");
+        lock.setOnClickListener(v -> {
+            v.setEnabled(false);
+            lockAction.run();
+        });
+        actions.addView(lock, new LinearLayout.LayoutParams(dp(42), dp(32)));
+        ImageButton menu = moreMenuButton(RED);
+        menu.setContentDescription("Opcoes");
+        menu.setOnClickListener(v -> menuAction.run());
+        actions.addView(menu, new LinearLayout.LayoutParams(dp(42), dp(38)));
+        row.addView(actions, new LinearLayout.LayoutParams(dp(46), dp(72)));
         box.addView(row);
         if (tap != null) box.setOnClickListener(v -> tap.run());
         return box;
@@ -534,6 +758,7 @@ public class MainActivity extends Activity {
         if ("caderno".equals(screen)) return R.drawable.ic_category;
         if ("categoria".equals(screen)) return R.drawable.ic_recipe;
         if ("receita".equals(screen)) return R.drawable.ic_ingredient;
+        if ("ingredientes_caderno".equals(screen)) return R.drawable.ic_clipboard_list;
         return R.drawable.ic_book;
     }
 
@@ -823,6 +1048,16 @@ public class MainActivity extends Activity {
         return lp;
     }
 
+    private LinearLayout.LayoutParams matchWrap() {
+        return new LinearLayout.LayoutParams(-1, -2);
+    }
+
+    private LinearLayout.LayoutParams matchWrapWithTop(int top) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, top, 0, 0);
+        return lp;
+    }
+
     private void configureSystemBars() {
         Window window = getWindow();
         window.setStatusBarColor(RED_DARK);
@@ -830,6 +1065,13 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             window.getDecorView().setSystemUiVisibility(0);
         }
+    }
+
+    private View statusBarShield() {
+        View bar = new View(this);
+        bar.setBackgroundColor(RED_DARK);
+        bar.setElevation(dp(8));
+        return bar;
     }
 
     private int statusBarHeight() {
@@ -877,6 +1119,26 @@ public class MainActivity extends Activity {
         );
     }
 
+    private void confirmDelete(String table, Item item, String label, String message, Runnable deleteAction) {
+        if (db.isLocked(table, item.id)) {
+            showThemed(themedDialog("Item protegido", null)
+                .setMessage("O " + label + " \"" + item.name + "\" esta com o cadeado fechado. Abra o cadeado antes de excluir.")
+                .setPositiveButton("Entendi", null));
+            return;
+        }
+        showThemed(themedDialog("Confirmar exclusao", null)
+            .setMessage(message + "\n\nDeseja mesmo excluir \"" + item.name + "\"? Esta acao nao pode ser desfeita.")
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Excluir", (d, w) -> deleteAction.run()));
+    }
+
+    private void toggleLock(String table, Item item, Runnable refresh) {
+        boolean next = !db.isLocked(table, item.id);
+        db.setLocked(table, item.id, next);
+        toast(next ? "Protecao ativada." : "Protecao removida.");
+        refresh.run();
+    }
+
     private void styleDialogWindow(AlertDialog dialog) {
         Window window = dialog.getWindow();
         if (window == null) return;
@@ -902,7 +1164,9 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if ("receita".equals(screen)) backFromReceita();
+        if ("recipe_preview".equals(screen)) showCategoria(currentCategoriaId);
+        else if ("ingredientes_caderno".equals(screen)) showCaderno(currentCadernoId);
+        else if ("receita".equals(screen)) backFromReceita();
         else if ("categoria".equals(screen)) showCaderno(currentCadernoId);
         else if ("caderno".equals(screen)) showHome();
         else super.onBackPressed();
@@ -1023,24 +1287,31 @@ public class MainActivity extends Activity {
         int parentId;
         int cadernoId;
         int recipeLinkId;
+        boolean locked = true;
         String name = "";
         String desc = "";
         String extra = "";
     }
 
     class Db extends SQLiteOpenHelper {
-        Db(Context context) { super(context, "caderno_receitas_java.db", null, 2); }
+        Db(Context context) { super(context, "caderno_receitas_java.db", null, 3); }
 
         public void onCreate(SQLiteDatabase db) {
-            db.execSQL("CREATE TABLE cadernos(id INTEGER PRIMARY KEY AUTOINCREMENT,nome TEXT NOT NULL,descricao TEXT,criado INTEGER)");
-            db.execSQL("CREATE TABLE categorias(id INTEGER PRIMARY KEY AUTOINCREMENT,caderno_id INTEGER NOT NULL,nome TEXT NOT NULL,descricao TEXT,criado INTEGER)");
-            db.execSQL("CREATE TABLE receitas(id INTEGER PRIMARY KEY AUTOINCREMENT,caderno_id INTEGER NOT NULL,categoria_id INTEGER NOT NULL,nome TEXT NOT NULL,preparo TEXT)");
-            db.execSQL("CREATE TABLE ingredientes(id INTEGER PRIMARY KEY AUTOINCREMENT,receita_id INTEGER NOT NULL,nome TEXT NOT NULL,quantidade TEXT,categoria TEXT,receita_link_id INTEGER NOT NULL DEFAULT 0)");
+            db.execSQL("CREATE TABLE cadernos(id INTEGER PRIMARY KEY AUTOINCREMENT,nome TEXT NOT NULL,descricao TEXT,criado INTEGER,bloqueado INTEGER NOT NULL DEFAULT 1)");
+            db.execSQL("CREATE TABLE categorias(id INTEGER PRIMARY KEY AUTOINCREMENT,caderno_id INTEGER NOT NULL,nome TEXT NOT NULL,descricao TEXT,criado INTEGER,bloqueado INTEGER NOT NULL DEFAULT 1)");
+            db.execSQL("CREATE TABLE receitas(id INTEGER PRIMARY KEY AUTOINCREMENT,caderno_id INTEGER NOT NULL,categoria_id INTEGER NOT NULL,nome TEXT NOT NULL,preparo TEXT,bloqueado INTEGER NOT NULL DEFAULT 1)");
+            db.execSQL("CREATE TABLE ingredientes(id INTEGER PRIMARY KEY AUTOINCREMENT,receita_id INTEGER NOT NULL,nome TEXT NOT NULL,quantidade TEXT,categoria TEXT,receita_link_id INTEGER NOT NULL DEFAULT 0,bloqueado INTEGER NOT NULL DEFAULT 1)");
         }
 
         public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
             if (oldVersion < 2) {
                 db.execSQL("ALTER TABLE ingredientes ADD COLUMN receita_link_id INTEGER NOT NULL DEFAULT 0");
+            }
+            if (oldVersion < 3) {
+                addColumnIfMissing(db, "cadernos", "bloqueado", "INTEGER NOT NULL DEFAULT 1");
+                addColumnIfMissing(db, "categorias", "bloqueado", "INTEGER NOT NULL DEFAULT 1");
+                addColumnIfMissing(db, "receitas", "bloqueado", "INTEGER NOT NULL DEFAULT 1");
+                addColumnIfMissing(db, "ingredientes", "bloqueado", "INTEGER NOT NULL DEFAULT 1");
             }
         }
 
@@ -1052,6 +1323,7 @@ public class MainActivity extends Activity {
                     item.name = c.getString(c.getColumnIndexOrThrow("nome"));
                     item.desc = c.getString(c.getColumnIndexOrThrow("descricao"));
                     if (hasColumn(c, "caderno_id")) item.parentId = c.getInt(c.getColumnIndexOrThrow("caderno_id"));
+                    if (hasColumn(c, "bloqueado")) item.locked = c.getInt(c.getColumnIndexOrThrow("bloqueado")) != 0;
                     return item;
                 }
             }
@@ -1067,6 +1339,7 @@ public class MainActivity extends Activity {
                     item.parentId = c.getInt(c.getColumnIndexOrThrow("categoria_id"));
                     item.name = c.getString(c.getColumnIndexOrThrow("nome"));
                     item.desc = c.getString(c.getColumnIndexOrThrow("preparo"));
+                    if (hasColumn(c, "bloqueado")) item.locked = c.getInt(c.getColumnIndexOrThrow("bloqueado")) != 0;
                     return item;
                 }
             }
@@ -1074,19 +1347,19 @@ public class MainActivity extends Activity {
         }
 
         List<Item> cadernos(String q) {
-            return list("SELECT id,nome,descricao,'' extra,0 parent_id,0 caderno_id FROM cadernos ORDER BY nome", q);
+            return list("SELECT id,nome,descricao,'' extra,0 parent_id,0 caderno_id,0 receita_link_id,bloqueado FROM cadernos ORDER BY nome", q);
         }
 
         List<Item> categorias(int caderno, String q) {
-            return list("SELECT id,nome,descricao,'' extra,caderno_id parent_id,caderno_id FROM categorias WHERE caderno_id=" + caderno + " ORDER BY nome", q);
+            return list("SELECT id,nome,descricao,'' extra,caderno_id parent_id,caderno_id,0 receita_link_id,bloqueado FROM categorias WHERE caderno_id=" + caderno + " ORDER BY nome", q);
         }
 
         List<Item> receitas(int categoria, String q) {
-            return list("SELECT id,nome,preparo descricao,'' extra,categoria_id parent_id,caderno_id FROM receitas WHERE categoria_id=" + categoria + " ORDER BY nome", q);
+            return list("SELECT id,nome,preparo descricao,'' extra,categoria_id parent_id,caderno_id,0 receita_link_id,bloqueado FROM receitas WHERE categoria_id=" + categoria + " ORDER BY nome", q);
         }
 
         List<Item> ingredientes(int receita, String q) {
-            return list("SELECT id,nome,quantidade descricao,categoria extra,receita_id parent_id,0 caderno_id,receita_link_id FROM ingredientes WHERE receita_id=" + receita + " ORDER BY categoria,nome", q);
+            return list("SELECT id,nome,quantidade descricao,categoria extra,receita_id parent_id,0 caderno_id,receita_link_id,bloqueado FROM ingredientes WHERE receita_id=" + receita + " ORDER BY categoria,nome", q);
         }
 
         List<Item> list(String sql, String q) {
@@ -1102,6 +1375,7 @@ public class MainActivity extends Activity {
                     item.parentId = c.getInt(4);
                     item.cadernoId = c.getInt(5);
                     if (c.getColumnCount() > 6) item.recipeLinkId = c.getInt(6);
+                    if (c.getColumnCount() > 7) item.locked = c.getInt(7) != 0;
                     if (nq.isEmpty() || norm(item.name + " " + item.desc + " " + item.extra).contains(nq)) out.add(item);
                 }
             }
@@ -1147,7 +1421,11 @@ public class MainActivity extends Activity {
         }
 
         List<Item> receitasParaVincular(int receitaAtual) {
-            return list("SELECT id,nome,preparo descricao,'' extra,categoria_id parent_id,caderno_id FROM receitas WHERE id<>" + receitaAtual + " ORDER BY nome", "");
+            return list("SELECT id,nome,preparo descricao,'' extra,categoria_id parent_id,caderno_id,0 receita_link_id,bloqueado FROM receitas WHERE id<>" + receitaAtual + " ORDER BY nome", "");
+        }
+
+        List<Item> ingredientesCaderno(int caderno, String q) {
+            return list("SELECT i.id,i.nome,i.quantidade descricao,(CASE WHEN IFNULL(i.categoria,'')='' THEN r.nome ELSE i.categoria || ' - ' || r.nome END) extra,i.receita_id parent_id,r.caderno_id caderno_id,i.receita_link_id,i.bloqueado FROM ingredientes i JOIN receitas r ON r.id=i.receita_id WHERE r.caderno_id=" + caderno + " ORDER BY i.nome,r.nome", q);
         }
 
         int findRecipeByName(String name, int receitaAtual) {
@@ -1186,6 +1464,18 @@ public class MainActivity extends Activity {
 
         void delete(String table, int id) {
             getWritableDatabase().delete(table, "id=?", new String[]{String.valueOf(id)});
+        }
+
+        boolean isLocked(String table, int id) {
+            try (Cursor c = getReadableDatabase().rawQuery("SELECT bloqueado FROM " + table + " WHERE id=?", new String[]{String.valueOf(id)})) {
+                return !c.moveToFirst() || c.getInt(0) != 0;
+            }
+        }
+
+        void setLocked(String table, int id, boolean locked) {
+            ContentValues v = new ContentValues();
+            v.put("bloqueado", locked ? 1 : 0);
+            getWritableDatabase().update(table, v, "id=?", new String[]{String.valueOf(id)});
         }
 
         void deleteCaderno(int id) {
@@ -1234,6 +1524,15 @@ public class MainActivity extends Activity {
 
         boolean hasColumn(Cursor c, String name) {
             return c.getColumnIndex(name) >= 0;
+        }
+
+        void addColumnIfMissing(SQLiteDatabase db, String table, String column, String definition) {
+            try (Cursor c = db.rawQuery("PRAGMA table_info(" + table + ")", null)) {
+                while (c.moveToNext()) {
+                    if (column.equalsIgnoreCase(c.getString(c.getColumnIndexOrThrow("name")))) return;
+                }
+            }
+            db.execSQL("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition);
         }
 
         String safe(String s) { return s == null ? "" : s; }

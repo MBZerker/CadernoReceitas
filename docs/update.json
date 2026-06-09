@@ -1,12 +1,12 @@
 {
-  "versionCode": 7,
-  "versionName": "0.7.0-java",
+  "versionCode": 8,
+  "versionName": "0.8.0-java",
   "critical": false,
   "pageUrl": "https://mbzerker.github.io/CadernoReceitas/",
-  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.7.0-java.apk",
-  "sha256": "E04B724B52D4DDC55054680437342D9178D295C479BA84E657FC2E0B0259F826",
-  "sizeBytes": 17786150,
+  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.8.0-java.apk",
+  "sha256": "2E62C7ED480454A43D51369D1CA9963E6AE01F4D1167067D389FC29FB7CB73AA",
+  "sizeBytes": 17793379,
   "signatureSha256": "f8dec9a06ec4eaf93a1a9b7f5b5cf73490d54d227f0ee172f83177557c79bfe8",
   "origin": "GitHub Pages oficial do Caderno de Receitas",
-  "changelog": "Acabamento visual: icones coerentes em cards e cabecalhos, dialogs e dropdowns no tema do app, campo de pesquisa arredondado com lupa, preparo liberado apos ingredientes e vinculo automatico de ingredientes que tambem sao receitas."
+  "changelog": "Protecao contra exclusao acidental com cadeado em todos os itens, confirmacao reforcada para excluir, barra fixa atras da status bar, melhor rolagem com teclado, visualizacao popular da receita com impressao no padrao CompraLink e tela de ingredientes cadastrados no caderno."
 }
