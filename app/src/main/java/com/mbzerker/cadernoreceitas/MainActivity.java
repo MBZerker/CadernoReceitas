@@ -7,6 +7,7 @@ import android.database.Cursor;
 import android.database.sqlite.*;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
 import android.net.Uri;
@@ -44,6 +45,7 @@ public class MainActivity extends Activity {
     private LinearLayout root;
     private LinearLayout listArea;
     private EditText search;
+    private final ArrayDeque<NavState> backStack = new ArrayDeque<>();
     private int currentCadernoId;
     private int currentCategoriaId;
     private int currentReceitaId;
@@ -52,6 +54,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         configureSystemBars();
         db = new Db(this);
         db.getWritableDatabase();
@@ -98,10 +101,8 @@ public class MainActivity extends Activity {
         root.addView(logoFrame);
 
         LinearLayout actions = card();
-        TextView title = label("▣ Caderno de Receitas", 26, RED, true);
-        actions.addView(title);
-        TextView sub = label("🍽 Organize cadernos, categorias, receitas e ingredientes.", 14, MUTED, false);
-        actions.addView(sub);
+        actions.addView(titleRow(R.drawable.ic_book, "Caderno de Receitas", 26));
+        actions.addView(label("Organize cadernos, grupos, receitas e ingredientes.", 14, MUTED, false));
         LinearLayout row = iconStrip();
         addWeightedStripIcon(row, R.drawable.ic_plus, RED, "Novo caderno", v -> newCaderno());
         addWeightedStripIcon(row, R.drawable.ic_report, RED_DARK, "Teste", v -> toast("Teste mantido para migracao futura."));
@@ -124,7 +125,7 @@ public class MainActivity extends Activity {
             return;
         }
         for (Item c : items) {
-            LinearLayout card = itemCard("C", c.name, c.desc, db.countReceitasCaderno(c.id) + " receitas", () -> showCaderno(c.id));
+            LinearLayout card = itemCard(R.drawable.ic_book, c.name, c.desc, db.countReceitasCaderno(c.id) + " receitas", () -> showCaderno(c.id));
             card.setOnLongClickListener(v -> { menuCaderno(c); return true; });
             addMenuButton(card, () -> menuCaderno(c));
             listArea.addView(card);
@@ -136,15 +137,15 @@ public class MainActivity extends Activity {
         currentCadernoId = id;
         Item caderno = db.get("cadernos", id);
         base(R.drawable.bg_caderno);
-        root.addView(header("C", caderno.name, caderno.desc, this::showHome));
+        root.addView(header(R.drawable.ic_book, caderno.name, caderno.desc, this::showHome));
 
         LinearLayout add = card();
-        add.addView(label("▤ Categoria", 20, INK, true));
-        add.addView(label("✦ Crie categorias para separar massas, doces, molhos e outros preparos.", 14, MUTED, false));
-        addActionButton(add, R.drawable.ic_plus, "Adicionar categoria", v -> newCategoria());
+        add.addView(titleRow(R.drawable.ic_category, "Grupo", 20));
+        add.addView(label("Crie grupos para separar massas, doces, molhos e outros preparos.", 14, MUTED, false));
+        addActionButton(add, R.drawable.ic_plus, "Adicionar grupo", v -> newCategoria());
         root.addView(add);
 
-        addSearch("Pesquisar categorias", this::renderCategorias);
+        addSearch("Pesquisar grupos", this::renderCategorias);
         listArea = new LinearLayout(this);
         listArea.setOrientation(LinearLayout.VERTICAL);
         root.addView(listArea);
@@ -155,11 +156,11 @@ public class MainActivity extends Activity {
         listArea.removeAllViews();
         List<Item> items = db.categorias(currentCadernoId, text(search));
         if (items.isEmpty()) {
-            listArea.addView(empty("Nenhuma categoria.", "Crie uma categoria para organizar receitas."));
+            listArea.addView(empty("Nenhum grupo.", "Crie um grupo para organizar receitas."));
             return;
         }
         for (Item item : items) {
-            LinearLayout card = itemCard("G", item.name, item.desc, db.countReceitasCategoria(item.id) + " receitas", () -> showCategoria(item.id));
+            LinearLayout card = itemCard(R.drawable.ic_category, item.name, item.desc, db.countReceitasCategoria(item.id) + " receitas", () -> showCategoria(item.id));
             card.setOnLongClickListener(v -> { menuCategoria(item); return true; });
             addMenuButton(card, () -> menuCategoria(item));
             listArea.addView(card);
@@ -172,11 +173,11 @@ public class MainActivity extends Activity {
         Item cat = db.get("categorias", id);
         currentCadernoId = cat.parentId;
         base(R.drawable.bg_receitas);
-        root.addView(header("G", cat.name, cat.desc, () -> showCaderno(currentCadernoId)));
+        root.addView(header(R.drawable.ic_category, cat.name, cat.desc, () -> showCaderno(currentCadernoId)));
 
         LinearLayout add = card();
-        add.addView(label("□ Receita", 20, INK, true));
-        add.addView(label("✦ Cadastre receitas desta categoria.", 14, MUTED, false));
+        add.addView(titleRow(R.drawable.ic_recipe, "Receita", 20));
+        add.addView(label("Cadastre receitas deste grupo.", 14, MUTED, false));
         addActionButton(add, R.drawable.ic_plus, "Adicionar receita", v -> newReceita());
         root.addView(add);
 
@@ -191,11 +192,11 @@ public class MainActivity extends Activity {
         listArea.removeAllViews();
         List<Item> items = db.receitas(currentCategoriaId, text(search));
         if (items.isEmpty()) {
-            listArea.addView(empty("Nenhuma receita.", "Adicione a primeira receita desta categoria."));
+            listArea.addView(empty("Nenhuma receita.", "Adicione a primeira receita deste grupo."));
             return;
         }
         for (Item item : items) {
-            LinearLayout card = itemCard("R", item.name, item.desc, db.countIngredientes(item.id) + " ingredientes", () -> showReceita(item.id));
+            LinearLayout card = itemCard(R.drawable.ic_recipe, item.name, item.desc, db.countIngredientes(item.id) + " ingredientes", () -> showReceita(item.id));
             card.setOnLongClickListener(v -> { menuReceita(item); return true; });
             addMenuButton(card, () -> menuReceita(item));
             listArea.addView(card);
@@ -210,19 +211,22 @@ public class MainActivity extends Activity {
         currentCadernoId = receita.cadernoId;
         base(R.drawable.bg_ingredientes);
 
-        root.addView(header("R", receita.name, "Toque em editar para alterar nome e preparo.", () -> showCategoria(currentCategoriaId)));
-
-        LinearLayout preparoCard = card();
-        preparoCard.addView(label("☰ Modo de preparo", 20, INK, true));
-        preparoCard.addView(label(receita.desc.isEmpty() ? "Nenhum modo de preparo cadastrado." : receita.desc, 15, INK, false));
-        addActionButton(preparoCard, R.drawable.ic_update, "Editar receita", v -> editReceita(receita));
-        root.addView(preparoCard);
+        root.addView(header(R.drawable.ic_recipe, receita.name, "Ingredientes e preparo da receita.", this::backFromReceita));
 
         LinearLayout ingredientActions = card();
-        ingredientActions.addView(label("• Ingredientes", 20, INK, true));
-        ingredientActions.addView(label("✦ Adicione matéria-prima ou vincule outra receita como preparo base.", 14, MUTED, false));
+        ingredientActions.addView(titleRow(R.drawable.ic_ingredient, "Ingredientes", 20));
+        ingredientActions.addView(label("Adicione os ingredientes desta receita.", 14, MUTED, false));
         addActionButton(ingredientActions, R.drawable.ic_plus, "Adicionar ingrediente", v -> newIngrediente());
         root.addView(ingredientActions);
+
+        int ingredientCount = db.countIngredientes(id);
+        if (ingredientCount >= 2) {
+            LinearLayout preparoCard = card();
+            preparoCard.addView(titleRow(R.drawable.ic_prep, "Modo de preparo", 20));
+            preparoCard.addView(label(receita.desc.isEmpty() ? "Toque no lapis para cadastrar o modo de preparo." : receita.desc, 15, INK, false));
+            addActionButton(preparoCard, R.drawable.ic_edit, "Editar modo de preparo", v -> editPreparo(receita));
+            root.addView(preparoCard);
+        }
 
         addSearch("Pesquisar ingredientes", this::renderIngredientes);
         listArea = new LinearLayout(this);
@@ -239,7 +243,7 @@ public class MainActivity extends Activity {
             return;
         }
         for (Item item : items) {
-            LinearLayout card = itemCard(item.recipeLinkId > 0 ? "R" : "-", item.name, item.desc, item.extra, item.recipeLinkId > 0 ? () -> showReceita(item.recipeLinkId) : null);
+            LinearLayout card = itemCard(item.recipeLinkId > 0 ? R.drawable.ic_link : R.drawable.ic_ingredient, item.name, item.desc, item.extra, item.recipeLinkId > 0 ? () -> openLinkedReceita(item.recipeLinkId) : null);
             if (item.recipeLinkId > 0) {
                 markLinkedIngredient(card);
             }
@@ -250,60 +254,46 @@ public class MainActivity extends Activity {
     }
 
     private void newCaderno() {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(8), 0, dp(8), 0);
+        LinearLayout box = themedDialogBox();
         AutoCompleteTextView nome = autoEntry("Nome do caderno", db.cadernoNames());
         EditText desc = entry("Descricao curta", "");
         box.addView(nome);
         box.addView(desc);
-        new AlertDialog.Builder(this)
-            .setTitle("Novo caderno")
-            .setView(box)
+        showThemed(themedDialog("Novo caderno", box)
             .setNegativeButton("Cancelar", null)
             .setPositiveButton("Salvar", (d, w) -> {
                 if (blank(nome)) return;
                 db.saveCaderno(0, text(nome), text(desc));
                 renderHomeList();
-            })
-            .show();
+            }));
     }
 
     private void newCategoria() {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(8), 0, dp(8), 0);
-        EditText nome = entry("Nome da categoria", "");
+        LinearLayout box = themedDialogBox();
+        EditText nome = entry("Nome do grupo", "");
         EditText desc = entry("Descricao curta", "");
         box.addView(nome);
         box.addView(desc);
-        new AlertDialog.Builder(this)
-            .setTitle("Nova categoria")
-            .setView(box)
+        showThemed(themedDialog("Novo grupo", box)
             .setNegativeButton("Cancelar", null)
             .setPositiveButton("Salvar", (d, w) -> {
                 if (blank(nome)) return;
                 db.saveCategoria(0, currentCadernoId, text(nome), text(desc));
                 renderCategorias();
-            })
-            .show();
+            }));
     }
 
     private void newReceita() {
         LinearLayout box = themedDialogBox();
         EditText nome = entry("Nome da receita", "");
-        EditText preparo = entry("Modo de preparo inicial", "");
-        preparo.setMinLines(3);
         box.addView(nome);
-        box.addView(preparo);
-        themedDialog("Nova receita", box)
+        showThemed(themedDialog("Nova receita", box)
             .setNegativeButton("Cancelar", null)
             .setPositiveButton("Salvar", (d, w) -> {
                 if (blank(nome)) return;
-                db.saveReceita(0, currentCadernoId, currentCategoriaId, text(nome), text(preparo));
+                db.saveReceita(0, currentCadernoId, currentCategoriaId, text(nome), "");
                 renderReceitas();
-            })
-            .show();
+            }));
     }
 
     private void newIngrediente() {
@@ -320,7 +310,7 @@ public class MainActivity extends Activity {
     private void menuCategoria(Item item) {
         actions(item.name, new String[]{"Editar", "Excluir"}, which -> {
             if (which == 0) editCategoria(item);
-            if (which == 1) confirm("Excluir categoria", "Excluir esta categoria e suas receitas?", () -> { db.deleteCategoria(item.id); renderCategorias(); });
+            if (which == 1) confirm("Excluir grupo", "Excluir este grupo e suas receitas?", () -> { db.deleteCategoria(item.id); renderCategorias(); });
         });
     }
 
@@ -346,18 +336,30 @@ public class MainActivity extends Activity {
     }
 
     private void editCategoria(Item item) {
-        editTwo("Editar categoria", "Nome", item.name, "Descricao", item.desc, (a, b) -> {
+        editTwo("Editar grupo", "Nome", item.name, "Descricao", item.desc, (a, b) -> {
             db.saveCategoria(item.id, currentCadernoId, a, b);
             renderCategorias();
         });
     }
 
     private void editReceita(Item item) {
-        editTwo("Editar receita", "Nome", item.name, "Modo de preparo", item.desc, (a, b) -> {
-            db.saveReceita(item.id, currentCadernoId, currentCategoriaId, a, b);
+        editOne("Editar receita", "Nome", item.name, value -> {
+            db.saveReceita(item.id, currentCadernoId, currentCategoriaId, value, item.desc);
             if ("receita".equals(screen)) showReceita(item.id);
             else renderReceitas();
         });
+    }
+
+    private void editPreparo(Item item) {
+        LinearLayout box = themedDialogBox();
+        MultiAutoCompleteTextView preparo = prepEntry("Modo de preparo", item.desc, db.ingredientNamesForReceita(item.id));
+        box.addView(preparo);
+        showThemed(themedDialog("Modo de preparo", box)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Salvar", (d, w) -> {
+                db.saveReceita(item.id, currentCadernoId, currentCategoriaId, item.name, text(preparo));
+                showReceita(item.id);
+            }));
     }
 
     private void editIngrediente(Item item) {
@@ -366,50 +368,32 @@ public class MainActivity extends Activity {
 
     private void showIngredientDialog(String title, Item item) {
         LinearLayout box = themedDialogBox();
-        AutoCompleteTextView nome = autoEntry("Nome do ingrediente", db.ingredientNames());
+        AutoCompleteTextView nome = autoEntry("Nome do ingrediente", db.ingredientAndRecipeNames(currentReceitaId));
         EditText qtd = entry("Quantidade", "");
-        AutoCompleteTextView cat = autoEntry("Categoria", db.ingredientCategories());
-        Spinner receitaSpinner = new Spinner(this);
-        List<Item> receitas = db.receitasParaVincular(currentReceitaId);
-        ArrayList<String> nomesReceitas = new ArrayList<>();
-        nomesReceitas.add("Não vincular receita preparada");
-        int selected = 0;
-        for (int i = 0; i < receitas.size(); i++) {
-            nomesReceitas.add(receitas.get(i).name);
-            if (item != null && item.recipeLinkId == receitas.get(i).id) selected = i + 1;
-        }
-        receitaSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, nomesReceitas));
-        receitaSpinner.setSelection(selected);
+        AutoCompleteTextView cat = autoEntry(categoryHintFor(""), db.ingredientCategories());
         if (item != null) {
             nome.setText(item.name);
             qtd.setText(item.desc);
             cat.setText(item.extra);
         }
-        receitaSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
-            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
-                if (position > 0 && nome.getText().toString().trim().isEmpty()) {
-                    nome.setText(receitas.get(position - 1).name);
-                }
-                if (position > 0 && cat.getText().toString().trim().isEmpty()) {
-                    cat.setText("Receita preparada");
-                }
+        nome.addTextChangedListener(new SimpleWatcher() {
+            public void afterTextChanged(Editable s) {
+                if (text(cat).isEmpty()) cat.setHint(categoryHintFor(text(nome)));
             }
-            public void onNothingSelected(android.widget.AdapterView<?> parent) {}
         });
         box.addView(nome);
         box.addView(qtd);
         box.addView(cat);
-        box.addView(label("Vincular receita preparada", 14, MUTED, true));
-        box.addView(receitaSpinner);
-        themedDialog(title, box)
+        showThemed(themedDialog(title, box)
             .setNegativeButton("Cancelar", null)
             .setPositiveButton("Salvar", (d, w) -> {
                 if (blank(nome)) return;
-                int recipeLink = receitaSpinner.getSelectedItemPosition() > 0 ? receitas.get(receitaSpinner.getSelectedItemPosition() - 1).id : 0;
-                db.saveIngrediente(item == null ? 0 : item.id, currentReceitaId, text(nome), text(qtd), text(cat), recipeLink);
-                renderIngredientes();
-            })
-            .show();
+                int recipeLink = db.findRecipeByName(text(nome), currentReceitaId);
+                String categoria = text(cat);
+                if (recipeLink > 0 && categoria.isEmpty()) categoria = "Receita preparada";
+                db.saveIngrediente(item == null ? 0 : item.id, currentReceitaId, text(nome), text(qtd), categoria, recipeLink);
+                showReceita(currentReceitaId);
+            }));
     }
 
     private void checkUpdate() {
@@ -417,6 +401,7 @@ public class MainActivity extends Activity {
         dialog.setMessage("Verificando atualizacao...");
         dialog.setIndeterminate(true);
         dialog.show();
+        styleDialogWindow(dialog);
         new Thread(() -> {
             try {
                 JSONObject json = new JSONObject(readUrl(UPDATE_URL));
@@ -442,6 +427,7 @@ public class MainActivity extends Activity {
         dialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
         dialog.setMax(100);
         dialog.show();
+        styleDialogWindow(dialog);
         new Thread(() -> {
             try {
                 String apkUrl = manifest.getString("apkUrl");
@@ -488,7 +474,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    private LinearLayout header(String icon, String title, String subtitle, Runnable back) {
+    private LinearLayout header(int icon, String title, String subtitle, Runnable back) {
         LinearLayout box = card();
         box.addView(headerInline(icon, title, back));
         if (!subtitle.isEmpty()) box.addView(label(subtitle, 14, MUTED, false));
@@ -503,26 +489,22 @@ public class MainActivity extends Activity {
         card.setBackground(bg);
     }
 
-    private LinearLayout headerInline(String icon, String title, Runnable back) {
+    private LinearLayout headerInline(int icon, String title, Runnable back) {
         LinearLayout row = hrow();
         ImageButton backButton = imageIconButton(R.drawable.ic_back, RED, Color.WHITE);
         backButton.setContentDescription("Voltar");
         backButton.setOnClickListener(v -> back.run());
         row.addView(backButton, new LinearLayout.LayoutParams(dp(56), dp(56)));
-        TextView iconView = label(icon, 28, GOLD, true);
-        iconView.setGravity(Gravity.CENTER);
-        row.addView(iconView, new LinearLayout.LayoutParams(dp(48), dp(56)));
+        row.addView(frameIcon(icon, GOLD, dp(44)), new LinearLayout.LayoutParams(dp(48), dp(56)));
         row.addView(label(title, 24, RED, true), weight());
         return row;
     }
 
-    private LinearLayout itemCard(String icon, String title, String subtitle, String extra, Runnable tap) {
+    private LinearLayout itemCard(int icon, String title, String subtitle, String extra, Runnable tap) {
         LinearLayout box = card();
         box.setPadding(dp(12), dp(12), dp(12), dp(12));
         LinearLayout row = hrow();
-        TextView iconText = label(icon, 26, RED, true);
-        iconText.setGravity(Gravity.CENTER);
-        row.addView(iconText, new LinearLayout.LayoutParams(dp(48), -1));
+        row.addView(frameIcon(icon, RED, dp(44)), new LinearLayout.LayoutParams(dp(48), dp(58)));
         LinearLayout text = new LinearLayout(this);
         text.setOrientation(LinearLayout.VERTICAL);
         text.addView(label(title, 18, INK, true));
@@ -543,9 +525,16 @@ public class MainActivity extends Activity {
 
     private LinearLayout empty(String title, String subtitle) {
         LinearLayout box = card();
-        box.addView(label(title, 20, INK, true));
+        box.addView(titleRow(currentFrameIcon(), title, 20));
         box.addView(label(subtitle, 15, MUTED, false));
         return box;
+    }
+
+    private int currentFrameIcon() {
+        if ("caderno".equals(screen)) return R.drawable.ic_category;
+        if ("categoria".equals(screen)) return R.drawable.ic_recipe;
+        if ("receita".equals(screen)) return R.drawable.ic_ingredient;
+        return R.drawable.ic_book;
     }
 
     private LinearLayout card() {
@@ -590,6 +579,31 @@ public class MainActivity extends Activity {
         return v;
     }
 
+    private LinearLayout titleRow(int icon, String title, int sp) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, 0, 0, dp(6));
+        row.addView(frameIcon(icon, RED, dp(34)), new LinearLayout.LayoutParams(dp(42), dp(42)));
+        TextView text = label(title, sp, RED, true);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, 1);
+        lp.setMargins(dp(8), 0, 0, 0);
+        row.addView(text, lp);
+        return row;
+    }
+
+    private FrameLayout frameIcon(int drawable, int color, int size) {
+        FrameLayout holder = new FrameLayout(this);
+        holder.setBackground(round(Color.argb(44, 217, 154, 59), dp(13), Color.argb(120, 232, 201, 142), 1));
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(drawable);
+        icon.setColorFilter(color);
+        icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(size, size, Gravity.CENTER);
+        holder.addView(icon, params);
+        return holder;
+    }
+
     private LinearLayout themedDialogBox() {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -603,6 +617,14 @@ public class MainActivity extends Activity {
             .setView(view);
     }
 
+    private AlertDialog showThemed(AlertDialog.Builder builder) {
+        AlertDialog dialog = builder.create();
+        dialog.setOnShowListener(d -> styleDialogWindow(dialog));
+        dialog.show();
+        styleDialogWindow(dialog);
+        return dialog;
+    }
+
     private EditText entry(String hint, String value) {
         EditText e = new EditText(this);
         e.setHint(hint);
@@ -612,7 +634,8 @@ public class MainActivity extends Activity {
         e.setHintTextColor(MUTED);
         e.setSelectAllOnFocus(true);
         e.setPadding(dp(12), dp(8), dp(12), dp(8));
-        e.setBackgroundColor(CARD_STRONG);
+        e.setBackground(fieldBg());
+        e.setLayoutParams(fieldParams());
         return e;
     }
 
@@ -623,10 +646,66 @@ public class MainActivity extends Activity {
         e.setHintTextColor(MUTED);
         e.setThreshold(1);
         e.setSelectAllOnFocus(true);
-        e.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_dropdown_item_1line, values));
+        e.setAdapter(textAdapter(values));
+        e.setDropDownBackgroundDrawable(round(PAPER, dp(14), LINE, 1));
         e.setPadding(dp(12), dp(8), dp(12), dp(8));
-        e.setBackgroundColor(CARD_STRONG);
+        e.setBackground(fieldBg());
+        e.setLayoutParams(fieldParams());
         return e;
+    }
+
+    private MultiAutoCompleteTextView prepEntry(String hint, String value, List<String> values) {
+        MultiAutoCompleteTextView e = new MultiAutoCompleteTextView(this);
+        e.setHint(hint);
+        e.setText(value);
+        e.setTextColor(INK);
+        e.setHintTextColor(MUTED);
+        e.setThreshold(1);
+        e.setMinLines(7);
+        e.setGravity(Gravity.TOP | Gravity.START);
+        e.setAdapter(textAdapter(values));
+        e.setTokenizer(new IngredientTokenizer());
+        e.setDropDownBackgroundDrawable(round(PAPER, dp(14), LINE, 1));
+        e.setPadding(dp(12), dp(10), dp(12), dp(10));
+        e.setBackground(fieldBg());
+        e.setLayoutParams(fieldParams());
+        return e;
+    }
+
+    private ArrayAdapter<String> textAdapter(List<String> values) {
+        return new ArrayAdapter<String>(this, android.R.layout.simple_dropdown_item_1line, values) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                TextView view = (TextView) super.getView(position, convertView, parent);
+                styleAdapterText(view);
+                return view;
+            }
+
+            @Override
+            public View getDropDownView(int position, View convertView, ViewGroup parent) {
+                TextView view = (TextView) super.getDropDownView(position, convertView, parent);
+                styleAdapterText(view);
+                view.setBackgroundColor(PAPER);
+                return view;
+            }
+        };
+    }
+
+    private void styleAdapterText(TextView view) {
+        view.setTextColor(INK);
+        view.setHintTextColor(MUTED);
+        view.setTextSize(16);
+        view.setPadding(dp(14), dp(10), dp(14), dp(10));
+    }
+
+    private GradientDrawable fieldBg() {
+        return round(CARD_STRONG, dp(14), LINE, 1);
+    }
+
+    private LinearLayout.LayoutParams fieldParams() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, 0, 0, dp(10));
+        return lp;
     }
 
     private void addActionButton(LinearLayout parent, int drawable, String desc, View.OnClickListener listener) {
@@ -716,14 +795,26 @@ public class MainActivity extends Activity {
     }
 
     private void addSearch(String hint, Runnable callback) {
-        search = entry(hint, "");
+        search = searchEntry(hint);
         search.setSingleLine(true);
         search.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             public void onTextChanged(CharSequence s, int start, int before, int count) {}
             public void afterTextChanged(Editable s) { callback.run(); }
         });
-        root.addView(search, new LinearLayout.LayoutParams(-1, dp(56)));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, dp(56));
+        params.setMargins(0, 0, 0, dp(12));
+        root.addView(search, params);
+    }
+
+    private EditText searchEntry(String hint) {
+        EditText e = entry(hint, "");
+        Drawable icon = getResources().getDrawable(R.drawable.ic_search, getTheme());
+        icon.setTint(RED);
+        e.setCompoundDrawablesWithIntrinsicBounds(null, null, icon, null);
+        e.setCompoundDrawablePadding(dp(10));
+        e.setBackground(round(CARD_STRONG, dp(18), LINE, 1));
+        return e;
     }
 
     private LinearLayout.LayoutParams weight() {
@@ -747,36 +838,43 @@ public class MainActivity extends Activity {
     }
 
     private void actions(String title, String[] items, Choice choice) {
-        AlertDialog dialog = themedDialog(title, null)
+        showThemed(themedDialog(title, null)
             .setItems(items, (d, which) -> choice.pick(which))
-            .create();
-        dialog.setOnShowListener(d -> styleDialogWindow(dialog));
-        dialog.show();
+        );
+    }
+
+    private void editOne(String title, String h1, String v1, SaveOne save) {
+        LinearLayout box = themedDialogBox();
+        EditText a = entry(h1, v1);
+        box.addView(a);
+        showThemed(themedDialog(title, box)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Salvar", (d, w) -> {
+                if (blank(a)) return;
+                save.save(text(a));
+            }));
     }
 
     private void editTwo(String title, String h1, String v1, String h2, String v2, SaveTwo save) {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout box = themedDialogBox();
         EditText a = entry(h1, v1);
         EditText b = entry(h2, v2);
         box.addView(a);
         box.addView(b);
-        themedDialog(title, box)
+        showThemed(themedDialog(title, box)
             .setNegativeButton("Cancelar", null)
             .setPositiveButton("Salvar", (d, w) -> {
                 if (blank(a)) return;
                 save.save(text(a), text(b));
-            }).show();
+            }));
     }
 
     private void confirm(String title, String message, Runnable yes) {
-        AlertDialog dialog = themedDialog(title, null)
+        showThemed(themedDialog(title, null)
             .setMessage(message)
             .setNegativeButton("Cancelar", null)
             .setPositiveButton("OK", (d, w) -> yes.run())
-            .create();
-        dialog.setOnShowListener(d -> styleDialogWindow(dialog));
-        dialog.show();
+        );
     }
 
     private void styleDialogWindow(AlertDialog dialog) {
@@ -787,11 +885,24 @@ public class MainActivity extends Activity {
         bg.setStroke(dp(1), LINE);
         bg.setCornerRadius(dp(18));
         window.setBackgroundDrawable(bg);
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE | WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
+        Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+        Button negative = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+        Button neutral = dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
+        if (positive != null) positive.setTextColor(RED);
+        if (negative != null) negative.setTextColor(MUTED);
+        if (neutral != null) neutral.setTextColor(GOLD);
+        ListView list = dialog.getListView();
+        if (list != null) {
+            list.setBackgroundColor(PAPER);
+            list.setDividerHeight(1);
+            list.setDivider(round(Color.argb(70, 232, 201, 142), 0, Color.TRANSPARENT, 0));
+        }
     }
 
     @Override
     public void onBackPressed() {
-        if ("receita".equals(screen)) showCategoria(currentCategoriaId);
+        if ("receita".equals(screen)) backFromReceita();
         else if ("categoria".equals(screen)) showCaderno(currentCadernoId);
         else if ("caderno".equals(screen)) showHome();
         else super.onBackPressed();
@@ -830,8 +941,82 @@ public class MainActivity extends Activity {
         return n.replaceAll("\\p{InCombiningDiacriticalMarks}+", "").toLowerCase(Locale.ROOT);
     }
 
+    private void openLinkedReceita(int recipeId) {
+        backStack.push(new NavState(screen, currentCadernoId, currentCategoriaId, currentReceitaId));
+        showReceita(recipeId);
+    }
+
+    private void backFromReceita() {
+        if (!backStack.isEmpty()) {
+            NavState state = backStack.pop();
+            currentCadernoId = state.cadernoId;
+            currentCategoriaId = state.categoriaId;
+            currentReceitaId = state.receitaId;
+            if ("receita".equals(state.screen)) showReceita(state.receitaId);
+            else if ("categoria".equals(state.screen)) showCategoria(state.categoriaId);
+            else if ("caderno".equals(state.screen)) showCaderno(state.cadernoId);
+            else showHome();
+            return;
+        }
+        showCategoria(currentCategoriaId);
+    }
+
+    private String categoryHintFor(String ingredientName) {
+        String known = db.categoryForIngredient(ingredientName);
+        if (!known.isEmpty()) return "Categoria sugerida: " + known;
+        return "Categoria (ex: gordura, molho, tempero)";
+    }
+
     interface Choice { void pick(int which); }
+    interface SaveOne { void save(String a); }
     interface SaveTwo { void save(String a, String b); }
+
+    abstract class SimpleWatcher implements TextWatcher {
+        public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+        public void onTextChanged(CharSequence s, int start, int before, int count) {}
+    }
+
+    static class IngredientTokenizer implements MultiAutoCompleteTextView.Tokenizer {
+        public int findTokenStart(CharSequence text, int cursor) {
+            int i = cursor;
+            while (i > 0) {
+                char c = text.charAt(i - 1);
+                if (c == ',' || c == '\n' || c == ';' || c == '.') break;
+                i--;
+            }
+            while (i < cursor && text.charAt(i) == ' ') i++;
+            return i;
+        }
+
+        public int findTokenEnd(CharSequence text, int cursor) {
+            int i = cursor;
+            int len = text.length();
+            while (i < len) {
+                char c = text.charAt(i);
+                if (c == ',' || c == '\n' || c == ';' || c == '.') return i;
+                i++;
+            }
+            return len;
+        }
+
+        public CharSequence terminateToken(CharSequence text) {
+            return text;
+        }
+    }
+
+    static class NavState {
+        final String screen;
+        final int cadernoId;
+        final int categoriaId;
+        final int receitaId;
+
+        NavState(String screen, int cadernoId, int categoriaId, int receitaId) {
+            this.screen = screen;
+            this.cadernoId = cadernoId;
+            this.categoriaId = categoriaId;
+            this.receitaId = receitaId;
+        }
+    }
 
     static class Item {
         int id;
@@ -963,6 +1148,40 @@ public class MainActivity extends Activity {
 
         List<Item> receitasParaVincular(int receitaAtual) {
             return list("SELECT id,nome,preparo descricao,'' extra,categoria_id parent_id,caderno_id FROM receitas WHERE id<>" + receitaAtual + " ORDER BY nome", "");
+        }
+
+        int findRecipeByName(String name, int receitaAtual) {
+            String wanted = norm(name);
+            if (wanted.isEmpty()) return 0;
+            for (Item receita : receitasParaVincular(receitaAtual)) {
+                if (norm(receita.name).equals(wanted)) return receita.id;
+            }
+            return 0;
+        }
+
+        String categoryForIngredient(String ingredientName) {
+            String wanted = norm(ingredientName);
+            if (wanted.isEmpty()) return "";
+            try (Cursor c = getReadableDatabase().rawQuery("SELECT nome,categoria FROM ingredientes WHERE categoria<>'' ORDER BY id DESC", null)) {
+                while (c.moveToNext()) {
+                    if (norm(c.getString(0)).equals(wanted)) return safe(c.getString(1));
+                }
+            }
+            if (findRecipeByName(ingredientName, currentReceitaId) > 0) return "Receita preparada";
+            return "";
+        }
+
+        List<String> ingredientNamesForReceita(int receitaId) {
+            return names("SELECT DISTINCT nome FROM ingredientes WHERE receita_id=" + receitaId + " ORDER BY nome");
+        }
+
+        List<String> ingredientAndRecipeNames(int receitaAtual) {
+            ArrayList<String> out = new ArrayList<>();
+            LinkedHashSet<String> unique = new LinkedHashSet<>();
+            unique.addAll(ingredientNames());
+            for (Item receita : receitasParaVincular(receitaAtual)) unique.add(receita.name);
+            out.addAll(unique);
+            return out;
         }
 
         void delete(String table, int id) {

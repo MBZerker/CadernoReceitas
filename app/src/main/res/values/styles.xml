@@ -6,5 +6,15 @@
         <item name="android:statusBarColor">@color/recipe_paper</item>
         <item name="android:navigationBarColor">@color/recipe_paper</item>
         <item name="android:colorAccent">@color/recipe_red</item>
+        <item name="android:alertDialogTheme">@style/RecipeDialogTheme</item>
+        <item name="android:windowSoftInputMode">adjustResize</item>
+    </style>
+
+    <style name="RecipeDialogTheme" parent="@android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">@color/recipe_red</item>
+        <item name="android:textColorPrimary">@color/recipe_ink</item>
+        <item name="android:textColorSecondary">@color/recipe_muted</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 </resources>
