@@ -1,12 +1,12 @@
 {
-  "versionCode": 9,
-  "versionName": "0.9.0-java",
+  "versionCode": 10,
+  "versionName": "0.10.0-java",
   "critical": false,
   "pageUrl": "https://mbzerker.github.io/CadernoReceitas/",
-  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.9.0-java.apk",
-  "sha256": "441AC231A8DCC83B306441824D4437A53A3CB76B3547C6C0F22749BF409DF0A8",
-  "sizeBytes": 22685876,
+  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.10.0-java.apk",
+  "sha256": "6356C153A52C81628133216A1C33F790C46649C8F0A52BD9D34F7954A4151688",
+  "sizeBytes": 22692859,
   "signatureSha256": "f8dec9a06ec4eaf93a1a9b7f5b5cf73490d54d227f0ee172f83177557c79bfe8",
   "origin": "GitHub Pages oficial do Caderno de Receitas",
-  "changelog": "Teste do caderno ativado: perguntas aleatorias e dificeis estilo Show do Milhao, com pegadinhas sobre receitas, ingredientes e preparo, pontuacao, timer com acrescimo de 10s e tela de game over. Titulos centralizados, cards ajustados para texto completo e botao de teste movido para dentro do caderno."
+  "changelog": "Compartilhamento separado para app, caderno e receita. O app usa o encurtador do CompraLink quando disponivel e links importaveis via GitHub Pages em /l/. Cadernos e receitas compartilhados podem ser importados no banco local preservando grupos, ingredientes e vinculos internos de receitas."
 }

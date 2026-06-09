@@ -3,3 +3,6 @@ build/
 app/build/
 CadernoReceitasJava-debug.apk
 keystore.properties
+local.properties
+.tools/
+.android-sdk/

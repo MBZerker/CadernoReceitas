@@ -17,6 +17,7 @@ import android.print.PrintManager;
 import android.provider.Settings;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.util.Base64;
 import android.view.*;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -24,17 +25,29 @@ import android.widget.*;
 
 import androidx.core.content.FileProvider;
 
+import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.text.Normalizer;
 import java.util.*;
+import java.util.zip.DeflaterOutputStream;
+import java.util.zip.InflaterInputStream;
 
 public class MainActivity extends Activity {
     private static final String UPDATE_URL = "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/update.json";
+    private static final String APP_SHARE_URL = "https://mbzerker.github.io/CadernoReceitas/";
+    private static final String SHARE_BASE = "https://mbzerker.github.io/CadernoReceitas/l/?payload=";
+    private static final String SHORTENER_ENDPOINT = "https://nbtchat-store.nectof.workers.dev/shorten";
+    private static final String PAGES_HOST = "mbzerker.github.io";
+    private static final String PAGES_PATH = "/CadernoReceitas/l/";
+    private static final String CUSTOM_SHARE_SCHEME = "cadernoreceitas";
+    private static final String CUSTOM_SHARE_HOST = "share";
     private static final int RED = Color.rgb(184, 50, 22);
     private static final int RED_DARK = Color.rgb(127, 29, 18);
     private static final int GOLD = Color.rgb(217, 154, 59);
@@ -79,7 +92,17 @@ public class MainActivity extends Activity {
         splash.setImageResource(R.drawable.splash_full);
         splash.setScaleType(ImageView.ScaleType.CENTER_CROP);
         setContentView(splash);
-        new Handler(Looper.getMainLooper()).postDelayed(this::showHome, 1800);
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            showHome();
+            handleIncomingIntent(getIntent());
+        }, 1800);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIncomingIntent(intent);
     }
 
     private void base(int background) {
@@ -122,6 +145,7 @@ public class MainActivity extends Activity {
         actions.addView(label("Organize cadernos, grupos, receitas e ingredientes.", 14, MUTED, false));
         LinearLayout row = iconStrip();
         addWeightedStripIcon(row, R.drawable.ic_plus, RED, "Novo caderno", v -> newCaderno());
+        addWeightedStripIcon(row, R.drawable.ic_share_nodes, RED_DARK, "Compartilhar app", v -> shareApp());
         addWeightedStripIcon(row, R.drawable.ic_update, GOLD, "Atualizar", v -> checkUpdate());
         actions.addView(row, actionStripParams());
         root.addView(actions);
@@ -161,6 +185,7 @@ public class MainActivity extends Activity {
         addWeightedStripIcon(cadernoActions, R.drawable.ic_plus, RED, "Adicionar grupo", v -> newCategoria());
         addWeightedStripIcon(cadernoActions, R.drawable.ic_clipboard_list, GOLD, "Ingredientes cadastrados", v -> showIngredientesCaderno());
         addWeightedStripIcon(cadernoActions, R.drawable.ic_report, RED_DARK, "Teste", v -> startQuizOrExplain());
+        addWeightedStripIcon(cadernoActions, R.drawable.ic_share_nodes, RED, "Compartilhar caderno", v -> shareCaderno(currentCadernoId));
         add.addView(cadernoActions, actionStripParams());
         root.addView(add);
 
@@ -262,7 +287,10 @@ public class MainActivity extends Activity {
         LinearLayout ingredientActions = card();
         ingredientActions.addView(titleRow(R.drawable.ic_ingredient, "Ingredientes", 20));
         ingredientActions.addView(label("Adicione os ingredientes desta receita.", 14, MUTED, false));
-        addActionButton(ingredientActions, R.drawable.ic_plus, "Adicionar ingrediente", v -> newIngrediente());
+        LinearLayout receitaActions = iconStrip();
+        addWeightedStripIcon(receitaActions, R.drawable.ic_plus, RED, "Adicionar ingrediente", v -> newIngrediente());
+        addWeightedStripIcon(receitaActions, R.drawable.ic_share_nodes, RED_DARK, "Compartilhar receita", v -> shareReceita(currentReceitaId));
+        ingredientActions.addView(receitaActions, actionStripParams());
         root.addView(ingredientActions);
 
         int ingredientCount = db.countIngredientes(id);
@@ -669,6 +697,370 @@ public class MainActivity extends Activity {
                 .append(escapeHtml(receita.desc.isEmpty() ? "Modo de preparo nao cadastrado." : receita.desc).replace("\n", "<br>"))
                 .append("</p></body></html>");
         return html.toString();
+    }
+
+    private void shareApp() {
+        sharePublicUrl("Compartilhar app", APP_SHARE_URL, "Caderno de Receitas");
+    }
+
+    private void shareCaderno(int id) {
+        try {
+            Item caderno = db.get("cadernos", id);
+            sharePublicUrl("Compartilhar caderno", buildShareLink(buildCadernoShareJson(id)), "Caderno de Receitas - " + caderno.name);
+        } catch (Exception e) {
+            toast("Nao foi possivel compartilhar este caderno.");
+        }
+    }
+
+    private void shareReceita(int id) {
+        try {
+            Item receita = db.getReceita(id);
+            sharePublicUrl("Compartilhar receita", buildShareLink(buildReceitaShareJson(id)), "Receita - " + receita.name);
+        } catch (Exception e) {
+            toast("Nao foi possivel compartilhar esta receita.");
+        }
+    }
+
+    private void sharePublicUrl(String chooserTitle, String link, String subject) {
+        toast("Preparando link...");
+        new Thread(() -> {
+            String finalLink = link;
+            try {
+                finalLink = shortenPublicUrl(link);
+            } catch (Exception ignored) {
+            }
+            String shareText = finalLink;
+            ui(() -> {
+                Intent send = new Intent(Intent.ACTION_SEND);
+                send.setType("text/plain");
+                send.putExtra(Intent.EXTRA_SUBJECT, subject);
+                send.putExtra(Intent.EXTRA_TEXT, shareText);
+                startActivity(Intent.createChooser(send, chooserTitle));
+
+                ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (clipboard != null) {
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Caderno de Receitas", shareText));
+                }
+            });
+        }).start();
+    }
+
+    private String buildShareLink(JSONObject json) throws Exception {
+        return SHARE_BASE + encodeCompressed(json.toString());
+    }
+
+    private JSONObject buildCadernoShareJson(int id) throws JSONException {
+        JSONObject rootJson = baseShareJson("caderno");
+        Item caderno = db.get("cadernos", id);
+        JSONObject cadernoJson = itemJson(caderno.id, caderno.name, caderno.desc);
+        JSONArray categorias = new JSONArray();
+        for (Item categoria : db.categorias(id, "")) {
+            JSONObject categoriaJson = itemJson(categoria.id, categoria.name, categoria.desc);
+            JSONArray receitas = new JSONArray();
+            for (Item receita : db.receitas(categoria.id, "")) {
+                receitas.put(recipeJson(receita.id));
+            }
+            categoriaJson.put("receitas", receitas);
+            categorias.put(categoriaJson);
+        }
+        cadernoJson.put("categorias", categorias);
+        rootJson.put("caderno", cadernoJson);
+        return rootJson;
+    }
+
+    private JSONObject buildReceitaShareJson(int id) throws JSONException {
+        JSONObject rootJson = baseShareJson("receita");
+        Item receita = db.getReceita(id);
+        Item categoria = db.get("categorias", receita.parentId);
+        Item caderno = db.get("cadernos", receita.cadernoId);
+        rootJson.put("cadernoNome", caderno.name);
+        rootJson.put("categoriaNome", categoria.name);
+        rootJson.put("receita", recipeJson(id));
+        return rootJson;
+    }
+
+    private JSONObject baseShareJson(String type) throws JSONException {
+        JSONObject json = new JSONObject();
+        json.put("v", 1);
+        json.put("app", "CadernoReceitas");
+        json.put("type", type);
+        json.put("createdAt", System.currentTimeMillis());
+        return json;
+    }
+
+    private JSONObject itemJson(int id, String name, String desc) throws JSONException {
+        JSONObject json = new JSONObject();
+        json.put("id", id);
+        json.put("nome", name == null ? "" : name);
+        json.put("descricao", desc == null ? "" : desc);
+        return json;
+    }
+
+    private JSONObject recipeJson(int id) throws JSONException {
+        Item receita = db.getReceita(id);
+        JSONObject json = new JSONObject();
+        json.put("id", receita.id);
+        json.put("nome", receita.name);
+        json.put("preparo", receita.desc);
+        JSONArray ingredientes = new JSONArray();
+        for (Item ingredient : db.ingredientes(id, "")) {
+            JSONObject item = new JSONObject();
+            item.put("nome", ingredient.name);
+            item.put("quantidade", ingredient.desc);
+            item.put("categoria", ingredient.extra);
+            item.put("receitaLinkId", ingredient.recipeLinkId);
+            if (ingredient.recipeLinkId > 0) {
+                item.put("receitaLinkNome", db.getReceita(ingredient.recipeLinkId).name);
+            }
+            ingredientes.put(item);
+        }
+        json.put("ingredientes", ingredientes);
+        return json;
+    }
+
+    private String shortenPublicUrl(String url) throws Exception {
+        if (!isPublicHttpUrl(url)) return url;
+        HttpURLConnection connection = (HttpURLConnection) new URL(SHORTENER_ENDPOINT).openConnection();
+        connection.setConnectTimeout(10000);
+        connection.setReadTimeout(15000);
+        connection.setRequestMethod("POST");
+        connection.setRequestProperty("Content-Type", "application/json");
+        connection.setRequestProperty("Accept", "application/json");
+        connection.setDoOutput(true);
+        JSONObject body = new JSONObject();
+        body.put("url", url);
+        try (OutputStream output = connection.getOutputStream()) {
+            output.write(body.toString().getBytes(StandardCharsets.UTF_8));
+        }
+        int code = connection.getResponseCode();
+        InputStream responseStream = code >= 200 && code < 300 ? connection.getInputStream() : connection.getErrorStream();
+        String response = responseStream == null ? "" : new String(readAll(responseStream), StandardCharsets.UTF_8);
+        connection.disconnect();
+        if (code < 200 || code >= 300 || response.trim().isEmpty()) return url;
+        JSONObject json = new JSONObject(response);
+        String shortUrl = json.optString("shortUrl", "");
+        return json.optBoolean("ok", false) && isPublicHttpUrl(shortUrl) ? shortUrl : url;
+    }
+
+    private boolean isPublicHttpUrl(String value) {
+        if (value == null || value.trim().isEmpty()) return false;
+        Uri uri = Uri.parse(value);
+        String scheme = uri.getScheme();
+        String host = uri.getHost();
+        if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) return false;
+        if (host == null || host.trim().isEmpty()) return false;
+        String key = host.toLowerCase(Locale.ROOT);
+        return !key.equals("localhost")
+                && !key.equals("127.0.0.1")
+                && !key.equals("0.0.0.0")
+                && !key.startsWith("10.")
+                && !key.startsWith("192.168.")
+                && !key.matches("172\\.(1[6-9]|2[0-9]|3[0-1])\\..*");
+    }
+
+    private void handleIncomingIntent(Intent intent) {
+        if (intent == null) return;
+        String payload = extractPayload(intent.getData());
+        if (payload != null && !payload.trim().isEmpty()) {
+            importSharedPayload(payload);
+        }
+    }
+
+    private String extractPayload(Uri data) {
+        if (data == null) return null;
+        if (("http".equals(data.getScheme()) || "https".equals(data.getScheme()))
+                && PAGES_HOST.equals(data.getHost())
+                && data.getPath() != null
+                && data.getPath().startsWith(PAGES_PATH)) {
+            return data.getQueryParameter("payload");
+        }
+        if (CUSTOM_SHARE_SCHEME.equals(data.getScheme()) && CUSTOM_SHARE_HOST.equals(data.getHost())) {
+            return data.getQueryParameter("payload");
+        }
+        return null;
+    }
+
+    private void importSharedPayload(String rawPayload) {
+        try {
+            JSONObject json = new JSONObject(decodeCompressed(cleanPayload(rawPayload)));
+            if (!"CadernoReceitas".equals(json.optString("app"))) {
+                toast("Link de compartilhamento invalido.");
+                return;
+            }
+            String type = json.optString("type");
+            if ("caderno".equals(type)) {
+                promptImportCaderno(json);
+            } else if ("receita".equals(type)) {
+                promptImportReceita(json);
+            } else {
+                toast("Tipo de compartilhamento desconhecido.");
+            }
+        } catch (Exception e) {
+            toast("Nao foi possivel abrir este compartilhamento.");
+        }
+    }
+
+    private void promptImportCaderno(JSONObject shareJson) {
+        JSONObject caderno = shareJson.optJSONObject("caderno");
+        if (caderno == null) {
+            toast("Caderno compartilhado invalido.");
+            return;
+        }
+        String name = jsonText(caderno, "nome", "Caderno importado");
+        int recipes = countRecipesJson(caderno);
+        showThemed(themedDialog("Importar caderno", null)
+            .setMessage("Importar \"" + name + "\" com " + recipes + (recipes == 1 ? " receita?" : " receitas?"))
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Importar", (d, w) -> importCadernoNow(caderno)));
+    }
+
+    private void promptImportReceita(JSONObject shareJson) {
+        JSONObject receita = shareJson.optJSONObject("receita");
+        if (receita == null) {
+            toast("Receita compartilhada invalida.");
+            return;
+        }
+        String name = jsonText(receita, "nome", "Receita importada");
+        showThemed(themedDialog("Importar receita", null)
+            .setMessage("Importar a receita \"" + name + "\"?")
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Importar", (d, w) -> importReceitaNow(shareJson)));
+    }
+
+    private void importCadernoNow(JSONObject caderno) {
+        try {
+            int cadernoId = db.addCaderno(uniqueName(db.cadernoNames(), jsonText(caderno, "nome", "Caderno importado"), "Caderno importado"), jsonText(caderno, "descricao"));
+            HashMap<Integer, Integer> recipeMap = new HashMap<>();
+            ArrayList<PendingIngredient> pendingIngredients = new ArrayList<>();
+            JSONArray categorias = caderno.optJSONArray("categorias");
+            if (categorias == null || categorias.length() == 0) {
+                db.addCategoria(cadernoId, "Receitas importadas", "");
+            } else {
+                for (int i = 0; i < categorias.length(); i++) {
+                    JSONObject categoria = categorias.optJSONObject(i);
+                    if (categoria == null) continue;
+                    int categoriaId = db.addCategoria(cadernoId, jsonText(categoria, "nome", "Grupo importado"), jsonText(categoria, "descricao"));
+                    JSONArray receitas = categoria.optJSONArray("receitas");
+                    if (receitas == null) continue;
+                    for (int r = 0; r < receitas.length(); r++) {
+                        JSONObject receita = receitas.optJSONObject(r);
+                        if (receita == null) continue;
+                        int oldRecipeId = receita.optInt("id", 0);
+                        int newRecipeId = db.addReceita(cadernoId, categoriaId, jsonText(receita, "nome", "Receita importada"), jsonText(receita, "preparo"));
+                        if (oldRecipeId > 0) recipeMap.put(oldRecipeId, newRecipeId);
+                        collectIngredients(pendingIngredients, newRecipeId, receita);
+                    }
+                }
+            }
+            for (PendingIngredient pending : pendingIngredients) {
+                int linkId = 0;
+                int oldLink = pending.json.optInt("receitaLinkId", 0);
+                if (oldLink > 0 && recipeMap.containsKey(oldLink)) linkId = recipeMap.get(oldLink);
+                if (linkId == 0) linkId = db.findRecipeByNameInCaderno(jsonText(pending.json, "receitaLinkNome"), cadernoId);
+                db.saveIngrediente(0, pending.recipeId, jsonText(pending.json, "nome", "Ingrediente"), jsonText(pending.json, "quantidade"), jsonText(pending.json, "categoria"), linkId);
+            }
+            toast("Caderno importado.");
+            showCaderno(cadernoId);
+        } catch (Exception e) {
+            toast("Falha ao importar caderno.");
+        }
+    }
+
+    private void importReceitaNow(JSONObject shareJson) {
+        try {
+            JSONObject receita = shareJson.getJSONObject("receita");
+            String cadernoName = jsonText(shareJson, "cadernoNome", "Receitas compartilhadas");
+            String categoriaName = jsonText(shareJson, "categoriaNome", "Receitas importadas");
+            int cadernoId = db.findCadernoByName(cadernoName);
+            if (cadernoId == 0) cadernoId = db.addCaderno(cadernoName, "Receitas recebidas por compartilhamento.");
+            int categoriaId = db.findCategoriaByName(cadernoId, categoriaName);
+            if (categoriaId == 0) categoriaId = db.addCategoria(cadernoId, categoriaName, "");
+            String recipeName = uniqueName(db.recipeNames(categoriaId), jsonText(receita, "nome", "Receita importada"), "Receita importada");
+            int receitaId = db.addReceita(cadernoId, categoriaId, recipeName, jsonText(receita, "preparo"));
+            ArrayList<PendingIngredient> pendingIngredients = new ArrayList<>();
+            collectIngredients(pendingIngredients, receitaId, receita);
+            for (PendingIngredient pending : pendingIngredients) {
+                int linkId = db.findRecipeByNameInCaderno(jsonText(pending.json, "receitaLinkNome"), cadernoId);
+                db.saveIngrediente(0, pending.recipeId, jsonText(pending.json, "nome", "Ingrediente"), jsonText(pending.json, "quantidade"), jsonText(pending.json, "categoria"), linkId);
+            }
+            toast("Receita importada.");
+            showReceita(receitaId);
+        } catch (Exception e) {
+            toast("Falha ao importar receita.");
+        }
+    }
+
+    private void collectIngredients(ArrayList<PendingIngredient> out, int recipeId, JSONObject receita) {
+        JSONArray ingredientes = receita.optJSONArray("ingredientes");
+        if (ingredientes == null) return;
+        for (int i = 0; i < ingredientes.length(); i++) {
+            JSONObject item = ingredientes.optJSONObject(i);
+            if (item != null) out.add(new PendingIngredient(recipeId, item));
+        }
+    }
+
+    private int countRecipesJson(JSONObject caderno) {
+        int count = 0;
+        JSONArray categorias = caderno.optJSONArray("categorias");
+        if (categorias == null) return 0;
+        for (int i = 0; i < categorias.length(); i++) {
+            JSONObject categoria = categorias.optJSONObject(i);
+            JSONArray receitas = categoria == null ? null : categoria.optJSONArray("receitas");
+            if (receitas != null) count += receitas.length();
+        }
+        return count;
+    }
+
+    private String uniqueName(List<String> existing, String wanted, String fallback) {
+        String base = wanted == null || wanted.trim().isEmpty() ? fallback : wanted.trim();
+        if (!containsNorm(existing, base)) return base;
+        int n = 2;
+        while (containsNorm(existing, base + " (" + n + ")")) n++;
+        return base + " (" + n + ")";
+    }
+
+    private String jsonText(JSONObject json, String key) {
+        return jsonText(json, key, "");
+    }
+
+    private String jsonText(JSONObject json, String key, String fallback) {
+        if (json == null) return fallback;
+        String value = json.optString(key, "").trim();
+        return value.isEmpty() ? fallback : value;
+    }
+
+    private String cleanPayload(String rawPayload) {
+        String payload = rawPayload == null ? "" : rawPayload.trim();
+        int marker = payload.indexOf("payload=");
+        if (marker >= 0) payload = payload.substring(marker + "payload=".length());
+        int end = payload.indexOf('\n');
+        if (end >= 0) payload = payload.substring(0, end);
+        int space = payload.indexOf(' ');
+        if (space >= 0) payload = payload.substring(0, space);
+        int amp = payload.indexOf('&');
+        if (amp >= 0) payload = payload.substring(0, amp);
+        return payload;
+    }
+
+    private String encodeCompressed(String json) throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (DeflaterOutputStream zip = new DeflaterOutputStream(out)) {
+            zip.write(json.getBytes(StandardCharsets.UTF_8));
+        }
+        return Base64.encodeToString(out.toByteArray(), Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
+    }
+
+    private String decodeCompressed(String payload) throws Exception {
+        byte[] packed = Base64.decode(payload, Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (InflaterInputStream unzip = new InflaterInputStream(new ByteArrayInputStream(packed))) {
+            byte[] buffer = new byte[1024];
+            int read;
+            while ((read = unzip.read(buffer)) != -1) {
+                out.write(buffer, 0, read);
+            }
+        }
+        return new String(out.toByteArray(), StandardCharsets.UTF_8);
     }
 
     private StringBuilder printHtmlStart(String title) {
@@ -1603,6 +1995,16 @@ public class MainActivity extends Activity {
         }
     }
 
+    static class PendingIngredient {
+        final int recipeId;
+        final JSONObject json;
+
+        PendingIngredient(int recipeId, JSONObject json) {
+            this.recipeId = recipeId;
+            this.json = json;
+        }
+    }
+
     static class Item {
         int id;
         int parentId;
@@ -1715,6 +2117,12 @@ public class MainActivity extends Activity {
             } else getWritableDatabase().update("cadernos", v, "id=?", new String[]{String.valueOf(id)});
         }
 
+        int addCaderno(String nome, String desc) {
+            ContentValues v = values(nome, desc);
+            v.put("criado", System.currentTimeMillis());
+            return (int) getWritableDatabase().insert("cadernos", null, v);
+        }
+
         void saveCategoria(int id, int caderno, String nome, String desc) {
             ContentValues v = values(nome, desc);
             v.put("caderno_id", caderno);
@@ -1722,6 +2130,13 @@ public class MainActivity extends Activity {
                 v.put("criado", System.currentTimeMillis());
                 getWritableDatabase().insert("categorias", null, v);
             } else getWritableDatabase().update("categorias", v, "id=?", new String[]{String.valueOf(id)});
+        }
+
+        int addCategoria(int caderno, String nome, String desc) {
+            ContentValues v = values(nome, desc);
+            v.put("caderno_id", caderno);
+            v.put("criado", System.currentTimeMillis());
+            return (int) getWritableDatabase().insert("categorias", null, v);
         }
 
         void saveReceita(int id, int caderno, int categoria, String nome, String preparo) {
@@ -1732,6 +2147,15 @@ public class MainActivity extends Activity {
             v.put("preparo", preparo);
             if (id == 0) getWritableDatabase().insert("receitas", null, v);
             else getWritableDatabase().update("receitas", v, "id=?", new String[]{String.valueOf(id)});
+        }
+
+        int addReceita(int caderno, int categoria, String nome, String preparo) {
+            ContentValues v = new ContentValues();
+            v.put("caderno_id", caderno);
+            v.put("categoria_id", categoria);
+            v.put("nome", nome);
+            v.put("preparo", preparo);
+            return (int) getWritableDatabase().insert("receitas", null, v);
         }
 
         void saveIngrediente(int id, int receita, String nome, String qtd, String categoria, int recipeLinkId) {
@@ -1757,6 +2181,33 @@ public class MainActivity extends Activity {
             String wanted = norm(name);
             if (wanted.isEmpty()) return 0;
             for (Item receita : receitasParaVincular(receitaAtual)) {
+                if (norm(receita.name).equals(wanted)) return receita.id;
+            }
+            return 0;
+        }
+
+        int findCadernoByName(String name) {
+            String wanted = norm(name);
+            if (wanted.isEmpty()) return 0;
+            for (Item item : cadernos("")) {
+                if (norm(item.name).equals(wanted)) return item.id;
+            }
+            return 0;
+        }
+
+        int findCategoriaByName(int caderno, String name) {
+            String wanted = norm(name);
+            if (wanted.isEmpty()) return 0;
+            for (Item item : categorias(caderno, "")) {
+                if (norm(item.name).equals(wanted)) return item.id;
+            }
+            return 0;
+        }
+
+        int findRecipeByNameInCaderno(String name, int caderno) {
+            String wanted = norm(name);
+            if (wanted.isEmpty()) return 0;
+            for (Item receita : receitasCaderno(caderno)) {
                 if (norm(receita.name).equals(wanted)) return receita.id;
             }
             return 0;
@@ -1829,6 +2280,7 @@ public class MainActivity extends Activity {
         }
 
         List<String> cadernoNames() { return names("SELECT DISTINCT nome FROM cadernos ORDER BY nome"); }
+        List<String> recipeNames(int categoria) { return names("SELECT DISTINCT nome FROM receitas WHERE categoria_id=" + categoria + " ORDER BY nome"); }
         List<String> ingredientNames() { return names("SELECT DISTINCT nome FROM ingredientes ORDER BY nome"); }
         List<String> ingredientCategories() { return names("SELECT DISTINCT categoria FROM ingredientes WHERE categoria<>'' ORDER BY categoria"); }
 

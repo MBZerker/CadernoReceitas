@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Abrir Caderno de Receitas</title>
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Caderno de Receitas compartilhado">
+  <meta property="og:description" content="Toque para abrir este caderno ou receita no Caderno de Receitas.">
+  <meta property="og:url" content="https://mbzerker.github.io/CadernoReceitas/l/">
+  <style>
+    :root {
+      --paper: #fff7ed;
+      --ink: #2f1b12;
+      --muted: #765848;
+      --red: #b83216;
+      --dark: #7f1d12;
+      --gold: #d99a3b;
+      --line: rgba(127, 29, 18, .2);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(217, 154, 59, .35), transparent 34rem),
+        linear-gradient(135deg, #fff9ec 0%, #f6d7aa 52%, #7f1d12 100%);
+      display: grid;
+      place-items: center;
+      padding: 22px;
+    }
+    main {
+      width: min(760px, 100%);
+      padding: clamp(22px, 5vw, 42px);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255, 247, 237, .92);
+      box-shadow: 0 24px 70px rgba(47, 27, 18, .25);
+    }
+    .badge {
+      display: inline-flex;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(217, 154, 59, .22);
+      color: var(--dark);
+      font-weight: 800;
+      font-size: 13px;
+    }
+    h1 {
+      margin: 14px 0 10px;
+      color: var(--dark);
+      font-size: clamp(34px, 8vw, 64px);
+      line-height: .96;
+    }
+    p {
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.55;
+    }
+    .status {
+      margin: 18px 0;
+      padding: 14px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, .58);
+      border: 1px solid var(--line);
+      color: var(--ink);
+      font-weight: 700;
+    }
+    .actions {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    a.button {
+      display: block;
+      width: 100%;
+      padding: 15px 18px;
+      border-radius: 12px;
+      text-align: center;
+      text-decoration: none;
+      font-weight: 900;
+      line-height: 1.2;
+    }
+    .primary {
+      background: linear-gradient(180deg, #e9ae62 0%, var(--red) 100%);
+      color: white;
+      box-shadow: 0 14px 30px rgba(127, 29, 18, .25);
+    }
+    .secondary {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, .55);
+      color: var(--dark);
+    }
+    .note {
+      margin-top: 14px;
+      font-size: 13px;
+      color: #6f4e37;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <span class="badge">Caderno de Receitas</span>
+    <h1>Receita compartilhada</h1>
+    <p>Abra no app para importar o caderno ou receita e deixar tudo salvo no seu banco local.</p>
+    <div class="status" id="status">Tentando abrir o Caderno de Receitas...</div>
+    <div class="actions">
+      <a class="button primary" id="open" href="#">Abrir no app</a>
+      <a class="button secondary" id="download" href="../CadernoReceitas.apk">Baixar APK</a>
+    </div>
+    <p class="note">Depois de instalar, volte para esta pagina e toque em Abrir no app.</p>
+  </main>
+  <script>
+    const payload = new URLSearchParams(location.search).get("payload") || "";
+    const appUrl = "cadernoreceitas://share?payload=" + encodeURIComponent(payload);
+    const open = document.getElementById("open");
+    const download = document.getElementById("download");
+    const status = document.getElementById("status");
+    open.href = appUrl;
+    if (payload) {
+      localStorage.setItem("cadernoReceitas:lastPayload", payload);
+      download.href = "../CadernoReceitas.apk?from=shared-recipe";
+    }
+    function tryOpenApp() {
+      if (!payload) return;
+      location.href = appUrl;
+    }
+    open.addEventListener("click", function () {
+      status.textContent = "Abrindo o app para importar o conteudo...";
+    });
+    download.addEventListener("click", async function () {
+      if (!payload || !navigator.clipboard) {
+        status.textContent = "Instale o app. Depois volte aqui e toque em Abrir no app.";
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(location.href);
+        status.textContent = "Link copiado. Instale o app, volte para esta pagina e toque em Abrir no app.";
+      } catch (error) {
+        status.textContent = "Instale o app. Depois volte aqui e toque em Abrir no app.";
+      }
+    });
+    if (payload) {
+      setTimeout(tryOpenApp, 300);
+      setTimeout(() => {
+        status.textContent = "Se voce ainda esta vendo esta tela, instale o app ou toque em Abrir no app.";
+      }, 1800);
+    } else {
+      status.textContent = "Este link nao trouxe uma receita valida, mas voce ainda pode baixar o app.";
+    }
+  </script>
+</body>
+</html>

@@ -24,8 +24,8 @@ android {
         applicationId "com.mbzerker.cadernoreceitas"
         minSdk 23
         targetSdk 35
-        versionCode 9
-        versionName "0.9.0-java"
+        versionCode 10
+        versionName "0.10.0-java"
     }
 
     signingConfigs {
