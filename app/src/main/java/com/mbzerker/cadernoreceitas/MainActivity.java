@@ -1,11 +1,17 @@
 package com.mbzerker.cadernoreceitas;
 
 import android.app.*;
+import android.animation.AnimatorSet;
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.os.*;
 import android.content.*;
 import android.database.Cursor;
 import android.database.sqlite.*;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -49,7 +55,10 @@ public class MainActivity extends Activity {
     private static final String PAGES_PATH = "/CadernoReceitas/l/";
     private static final String CUSTOM_SHARE_SCHEME = "cadernoreceitas";
     private static final String CUSTOM_SHARE_HOST = "share";
-    private static final int QUIZ_QUESTION_TYPE_COUNT = 30;
+    private static final int QUIZ_QUESTION_TYPE_COUNT = QuizEngine.MODEL_COUNT;
+    private static final int QUIZ_ROUND_SIZE = QuizEngine.ROUND_SIZE;
+    private static final long QUIZ_BASE_TIME_MS = 30000L;
+    private static final int QUIZ_MAX_BONUS_SECONDS = 10;
     private static final int RED = Color.rgb(184, 50, 22);
     private static final int RED_DARK = Color.rgb(127, 29, 18);
     private static final int GOLD = Color.rgb(217, 154, 59);
@@ -64,19 +73,26 @@ public class MainActivity extends Activity {
     private Db db;
     private LinearLayout root;
     private LinearLayout listArea;
+    private ScrollView contentScroll;
     private EditText search;
     private final ArrayDeque<NavState> backStack = new ArrayDeque<>();
     private final Handler quizHandler = new Handler(Looper.getMainLooper());
     private final ArrayList<QuizQuestion> quizQuestions = new ArrayList<>();
     private Runnable quizTick;
-    private TextView quizTimer;
+    private TimeCircleView quizTimerView;
     private int quizIndex;
     private int quizScore;
     private long quizDeadline;
-    private boolean quizGrace;
+    private long quizBaseDeadline;
+    private long quizQuestionStartedAt;
+    private long quizBonusWindowMs;
+    private int quizBonusSeconds;
+    private boolean quizUsingBonus;
+    private boolean quizAnswered;
     private int currentCadernoId;
     private int currentCategoriaId;
     private int currentReceitaId;
+    private int highlightedIngredientId;
     private String screen = "home";
 
     @Override
@@ -117,6 +133,7 @@ public class MainActivity extends Activity {
         frame.addView(bg, new FrameLayout.LayoutParams(-1, -1));
 
         ScrollView scroll = new ScrollView(this);
+        contentScroll = scroll;
         scroll.setFillViewport(false);
         scroll.setClipToPadding(false);
         scroll.setPadding(0, 0, 0, dp(220));
@@ -225,15 +242,41 @@ public class MainActivity extends Activity {
 
     private void renderIngredientesCaderno() {
         listArea.removeAllViews();
-        List<Item> items = db.ingredientesCaderno(currentCadernoId, text(search));
+        List<Item> items = db.ingredientesUnicosCaderno(currentCadernoId, text(search));
         if (items.isEmpty()) {
             listArea.addView(empty("Nenhum ingrediente cadastrado.", "Os ingredientes aparecem aqui conforme forem adicionados nas receitas."));
             return;
         }
         for (Item item : items) {
-            LinearLayout card = itemCard(item.recipeLinkId > 0 ? R.drawable.ic_link : R.drawable.ic_ingredient, item.name, item.desc, item.extra, item.locked, () -> showReceita(item.parentId), () -> toggleLock("ingredientes", item, this::renderIngredientesCaderno), () -> menuIngredienteCatalogo(item));
+            LinearLayout card = itemCard(item.recipeLinkId > 0 ? R.drawable.ic_link : R.drawable.ic_ingredient, item.name, item.desc, item.extra, false, () -> showIngredientRecipes(item.name), null, null);
             if (item.recipeLinkId > 0) markLinkedIngredient(card);
-            card.setOnLongClickListener(v -> { menuIngredienteCatalogo(item); return true; });
+            listArea.addView(card);
+        }
+    }
+
+    private void showIngredientRecipes(String ingredientName) {
+        screen = "ingrediente_usos";
+        base(R.drawable.bg_ingredientes);
+        root.addView(header(R.drawable.ic_ingredient, ingredientName, "Receitas que usam este ingrediente.", () -> showIngredientesCaderno()));
+        listArea = new LinearLayout(this);
+        listArea.setOrientation(LinearLayout.VERTICAL);
+        root.addView(listArea);
+        renderIngredientRecipes(ingredientName);
+    }
+
+    private void renderIngredientRecipes(String ingredientName) {
+        listArea.removeAllViews();
+        List<Item> items = db.receitasComIngrediente(currentCadernoId, ingredientName);
+        if (items.isEmpty()) {
+            listArea.addView(empty("Nenhuma receita encontrada.", "Este ingrediente ainda nao esta em receitas deste caderno."));
+            return;
+        }
+        for (Item item : items) {
+            String detail = item.desc.isEmpty() ? item.extra : item.desc + (item.extra.isEmpty() ? "" : " - " + item.extra);
+            LinearLayout card = itemCard(R.drawable.ic_recipe, item.name, detail, db.countIngredientes(item.parentId) + " ingredientes", false, () -> {
+                backStack.push(new NavState("ingrediente_usos", currentCadernoId, currentCategoriaId, currentReceitaId, ingredientName));
+                showReceita(item.parentId, item.id);
+            }, null, null);
             listArea.addView(card);
         }
     }
@@ -277,8 +320,13 @@ public class MainActivity extends Activity {
     }
 
     private void showReceita(int id) {
+        showReceita(id, 0);
+    }
+
+    private void showReceita(int id, int highlightIngredientId) {
         screen = "receita";
         currentReceitaId = id;
+        highlightedIngredientId = highlightIngredientId;
         Item receita = db.getReceita(id);
         currentCategoriaId = receita.parentId;
         currentCadernoId = receita.cadernoId;
@@ -325,6 +373,10 @@ public class MainActivity extends Activity {
             }
             card.setOnLongClickListener(v -> { menuIngrediente(item); return true; });
             listArea.addView(card);
+            if (highlightedIngredientId == item.id) {
+                scheduleIngredientHighlight(card);
+                highlightedIngredientId = 0;
+            }
         }
     }
 
@@ -349,150 +401,27 @@ public class MainActivity extends Activity {
                 .setPositiveButton("Entendi", null));
             return;
         }
-        Collections.shuffle(quizQuestions);
-        while (quizQuestions.size() > 12) quizQuestions.remove(quizQuestions.size() - 1);
         quizIndex = 0;
         quizScore = 0;
+        quizBonusSeconds = 0;
         showQuizQuestion();
     }
 
     private ArrayList<QuizQuestion> buildQuizQuestions() {
         ArrayList<QuizQuestion> out = new ArrayList<>();
-        Random random = new Random();
+        ArrayList<QuizEngine.RecipeData> data = new ArrayList<>();
         List<Item> recipes = db.receitasCaderno(currentCadernoId);
-        ArrayList<String> allIngredients = new ArrayList<>();
-        ArrayList<String> allQuantities = new ArrayList<>();
-        ArrayList<String> allCategories = new ArrayList<>();
-        HashMap<Integer, List<Item>> ingredientsByRecipe = new HashMap<>();
         for (Item recipe : recipes) {
-            List<Item> ingredients = db.ingredientes(recipe.id, "");
-            ingredientsByRecipe.put(recipe.id, ingredients);
-            for (Item ingredient : ingredients) {
-                addUnique(allIngredients, ingredient.name);
-                if (!ingredient.desc.isEmpty()) addUnique(allQuantities, ingredient.desc);
-                if (!ingredient.extra.isEmpty()) addUnique(allCategories, ingredient.extra);
+            QuizEngine.RecipeData recipeData = new QuizEngine.RecipeData(recipe.id, recipe.name, recipe.desc);
+            for (Item ingredient : db.ingredientes(recipe.id, "")) {
+                String linkedName = "";
+                if (ingredient.recipeLinkId > 0) linkedName = db.getReceita(ingredient.recipeLinkId).name;
+                recipeData.ingredients.add(new QuizEngine.IngredientData(ingredient.id, recipe.id, ingredient.name, ingredient.desc, ingredient.extra, ingredient.recipeLinkId, linkedName));
             }
+            data.add(recipeData);
         }
-
-        for (Item recipe : recipes) {
-            List<Item> ingredients = ingredientsByRecipe.get(recipe.id);
-            if (ingredients == null || ingredients.isEmpty()) continue;
-            ArrayList<String> recipeIngredients = ingredientNames(ingredients);
-            ArrayList<String> recipeDistractors = recipeNamesExcept(recipes, recipe.id);
-            ArrayList<String> distractors = withoutNormalized(allIngredients, recipeIngredients);
-            String correctIngredient = recipeIngredients.get(random.nextInt(recipeIngredients.size()));
-            addQuestion(out, "Na receita \"" + recipe.name + "\", qual ingrediente parece plausivel, mas e o verdadeiro detalhe da ficha?", correctIngredient, pickDistractors(distractors, correctIngredient, 3));
-
-            if (recipeIngredients.size() >= 3 && !distractors.isEmpty()) {
-                String intruder = distractors.get(random.nextInt(distractors.size()));
-                ArrayList<String> wrong = pickDistractors(recipeIngredients, intruder, 3);
-                addQuestion(out, "Qual alternativa NAO pertence a \"" + recipe.name + "\"?", intruder, wrong);
-            }
-
-            if (recipeIngredients.size() >= 2) {
-                Collections.shuffle(recipeIngredients);
-                String a = recipeIngredients.get(0);
-                String b = recipeIngredients.get(1);
-                addQuestion(out, "Qual receita usa ao mesmo tempo \"" + a + "\" e \"" + b + "\"?", recipe.name, pickDistractors(recipeDistractors, recipe.name, 3));
-            }
-
-            if (!recipe.desc.isEmpty()) {
-                ArrayList<String> prepDistractors = prepSnippetsExcept(recipes, recipe.id);
-                addQuestion(out, "Qual trecho de preparo pertence a \"" + recipe.name + "\"?", prepSnippet(recipe.desc), pickDistractors(prepDistractors, prepSnippet(recipe.desc), 3));
-                addQuestion(out, "Esta instrucao entrega uma receita, mas tenta parecer generica: \"" + prepSnippet(recipe.desc) + "\". Qual e a receita?", recipe.name, pickDistractors(recipeDistractors, recipe.name, 3));
-
-                ArrayList<String> mentioned = ingredientsMentionedInPrep(recipe.desc, recipeIngredients, true);
-                ArrayList<String> notMentioned = ingredientsMentionedInPrep(recipe.desc, recipeIngredients, false);
-                if (!mentioned.isEmpty()) {
-                    String mentionedIngredient = mentioned.get(random.nextInt(mentioned.size()));
-                    addQuestion(out, "Qual ingrediente da ficha de \"" + recipe.name + "\" tambem aparece no modo de preparo?", mentionedIngredient, pickDistractors(withoutNormalized(recipeIngredients, Collections.singletonList(mentionedIngredient)), mentionedIngredient, 3));
-                }
-                if (!notMentioned.isEmpty()) {
-                    String quietIngredient = notMentioned.get(random.nextInt(notMentioned.size()));
-                    addQuestion(out, "Qual ingrediente esta na ficha de \"" + recipe.name + "\", mas nao e citado literalmente no modo de preparo?", quietIngredient, pickDistractors(withoutNormalized(recipeIngredients, Collections.singletonList(quietIngredient)), quietIngredient, 3));
-                }
-            }
-
-            Item quantityItem = randomItem(itemsWithQuantity(ingredients), random);
-            if (quantityItem != null) {
-                addQuestion(out, "Na ficha de \"" + recipe.name + "\", qual quantidade acompanha \"" + quantityItem.name + "\"?", quantityItem.desc, pickDistractorsWithFallback(allQuantities, quantityItem.desc, quantityFallbacks(), 3));
-                addQuestion(out, "Qual ingrediente de \"" + recipe.name + "\" esta cadastrado com \"" + quantityItem.desc + "\"?", quantityItem.name, pickDistractors(withoutNormalized(recipeIngredients, Collections.singletonList(quantityItem.name)), quantityItem.name, 3));
-                addQuestion(out, "Qual par quantidade + ingrediente pertence a \"" + recipe.name + "\"?", quantityPair(quantityItem), pairDistractors(quantityPairs(itemsWithQuantity(ingredients)), quantityPair(quantityItem), quantityPairsFromOtherRecipes(recipes, ingredientsByRecipe, recipe.id)));
-            }
-
-            Item categoryItem = randomItem(itemsWithCategory(ingredients), random);
-            if (categoryItem != null) {
-                ArrayList<String> categories = categoryNames(ingredients);
-                addQuestion(out, "Em \"" + recipe.name + "\", qual categoria organiza \"" + categoryItem.name + "\"?", categoryItem.extra, pickDistractorsWithFallback(allCategories, categoryItem.extra, categoryFallbacks(), 3));
-                addQuestion(out, "Qual ingrediente de \"" + recipe.name + "\" esta dentro da categoria \"" + categoryItem.extra + "\"?", categoryItem.name, pickDistractors(withoutNormalized(recipeIngredients, Collections.singletonList(categoryItem.name)), categoryItem.name, 3));
-                addQuestion(out, "Qual par categoria + ingrediente pertence a \"" + recipe.name + "\"?", categoryPair(categoryItem), pairDistractors(categoryPairs(itemsWithCategory(ingredients)), categoryPair(categoryItem), categoryPairsFromOtherRecipes(recipes, ingredientsByRecipe, recipe.id)));
-                String dominant = dominantCategory(ingredients, true);
-                String rare = dominantCategory(ingredients, false);
-                if (!dominant.isEmpty()) addQuestion(out, "Qual categoria mais se repete em \"" + recipe.name + "\"?", dominant, pickDistractorsWithFallback(categories, dominant, categoryFallbacks(), 3));
-                if (!rare.isEmpty()) addQuestion(out, "Qual categoria aparece menos em \"" + recipe.name + "\"?", rare, pickDistractorsWithFallback(categories, rare, categoryFallbacks(), 3));
-            }
-
-            addQuestion(out, "Quantos ingredientes estao cadastrados em \"" + recipe.name + "\"?", countLabel(ingredients.size()), numberDistractors(ingredients.size()));
-
-            Item more = recipeByIngredientCount(recipes, ingredientsByRecipe, recipe.id, ingredients.size(), 1);
-            if (more != null) addQuestion(out, "Qual receita tem MAIS ingredientes que \"" + recipe.name + "\"?", more.name, recipeNamesByIngredientCount(recipes, ingredientsByRecipe, recipe.id, ingredients.size(), -1));
-
-            Item less = recipeByIngredientCount(recipes, ingredientsByRecipe, recipe.id, ingredients.size(), -1);
-            if (less != null) addQuestion(out, "Qual receita tem MENOS ingredientes que \"" + recipe.name + "\"?", less.name, recipeNamesByIngredientCount(recipes, ingredientsByRecipe, recipe.id, ingredients.size(), 1));
-
-            Item same = recipeByIngredientCount(recipes, ingredientsByRecipe, recipe.id, ingredients.size(), 0);
-            if (same != null) addQuestion(out, "Qual receita tem a MESMA quantidade de ingredientes que \"" + recipe.name + "\"?", same.name, recipeNamesByDifferentIngredientCount(recipes, ingredientsByRecipe, recipe.id, ingredients.size()));
-
-            if (recipeIngredients.size() >= 2) {
-                ArrayList<String> sorted = new ArrayList<>(recipeIngredients);
-                Collections.sort(sorted, (a, b) -> norm(a).compareTo(norm(b)));
-                addQuestion(out, "Qual ingrediente vem primeiro em ordem alfabetica dentro de \"" + recipe.name + "\"?", sorted.get(0), pickDistractors(withoutNormalized(sorted, Collections.singletonList(sorted.get(0))), sorted.get(0), 3));
-                addQuestion(out, "Qual ingrediente vem por ultimo em ordem alfabetica dentro de \"" + recipe.name + "\"?", sorted.get(sorted.size() - 1), pickDistractors(withoutNormalized(sorted, Collections.singletonList(sorted.get(sorted.size() - 1))), sorted.get(sorted.size() - 1), 3));
-
-                ArrayList<String> pairs = ingredientPairs(recipeIngredients);
-                if (!pairs.isEmpty()) {
-                    String validPair = pairs.get(random.nextInt(pairs.size()));
-                    addQuestion(out, "Qual dupla de ingredientes pertence a \"" + recipe.name + "\"?", validPair, pairDistractors(pairs, validPair, ingredientPairs(distractors)));
-                    String fakePair = fakePair(recipeIngredients, distractors, random);
-                    if (!fakePair.isEmpty()) addQuestion(out, "Qual dupla NAO pertence por completo a \"" + recipe.name + "\"?", fakePair, pairDistractors(ingredientPairs(recipeIngredients), fakePair, new ArrayList<>()));
-                }
-            }
-
-            Item linked = randomItem(itemsLinkedToRecipe(ingredients), random);
-            if (linked != null) {
-                addQuestion(out, "Qual ingrediente de \"" + recipe.name + "\" e uma receita preparada vinculada?", linked.name, pickDistractors(withoutNormalized(recipeIngredients, Collections.singletonList(linked.name)), linked.name, 3));
-                addQuestion(out, "O ingrediente \"" + linked.name + "\" aponta para qual receita preparada?", db.getReceita(linked.recipeLinkId).name, pickDistractors(recipeDistractors, db.getReceita(linked.recipeLinkId).name, 3));
-            }
-
-            Item raw = randomItem(itemsNotLinkedToRecipe(ingredients), random);
-            if (raw != null) {
-                addQuestion(out, "Qual item de \"" + recipe.name + "\" e materia-prima comum, sem receita vinculada?", raw.name, pickDistractors(withoutNormalized(recipeIngredients, Collections.singletonList(raw.name)), raw.name, 3));
-            }
-
-            Item aGosto = randomItem(itemsWithAGosto(ingredients), random);
-            if (aGosto != null) {
-                addQuestion(out, "Qual ingrediente de \"" + recipe.name + "\" esta marcado como \"a gosto\"?", aGosto.name, pickDistractors(withoutNormalized(recipeIngredients, Collections.singletonList(aGosto.name)), aGosto.name, 3));
-            }
-
-            Item other = randomRecipe(recipes, recipe.id, random);
-            if (other != null) {
-                ArrayList<String> otherIngredients = ingredientNames(ingredientsByRecipe.get(other.id));
-                ArrayList<String> onlyHere = withoutNormalized(recipeIngredients, otherIngredients);
-                ArrayList<String> onlyThere = withoutNormalized(otherIngredients, recipeIngredients);
-                ArrayList<String> common = commonValues(recipeIngredients, otherIngredients);
-                if (!onlyHere.isEmpty()) {
-                    String correct = onlyHere.get(random.nextInt(onlyHere.size()));
-                    addQuestion(out, "Qual ingrediente aparece em \"" + recipe.name + "\", mas nao em \"" + other.name + "\"?", correct, pickDistractorsWithFallback(onlyThere, correct, allIngredients.toArray(new String[0]), 3));
-                }
-                if (!onlyThere.isEmpty()) {
-                    String correct = onlyThere.get(random.nextInt(onlyThere.size()));
-                    addQuestion(out, "Qual ingrediente aparece em \"" + other.name + "\", mas nao em \"" + recipe.name + "\"?", correct, pickDistractorsWithFallback(onlyHere, correct, allIngredients.toArray(new String[0]), 3));
-                }
-                if (!common.isEmpty()) {
-                    String correct = common.get(random.nextInt(common.size()));
-                    addQuestion(out, "Qual ingrediente aparece tanto em \"" + recipe.name + "\" quanto em \"" + other.name + "\"?", correct, pickDistractors(withoutNormalized(allIngredients, Collections.singletonList(correct)), correct, 3));
-                }
-            }
+        for (QuizEngine.Question question : QuizEngine.buildRound(data)) {
+            out.add(new QuizQuestion(question.prompt, question.options, question.correctIndex, question.modelId, question.level));
         }
         return out;
     }
@@ -777,14 +706,16 @@ public class MainActivity extends Activity {
         QuizQuestion question = quizQuestions.get(quizIndex);
 
         LinearLayout top = card();
-        top.addView(headerInline("Teste do Caderno", () -> {
+        top.addView(headerInline(quizTitle(), () -> {
             stopQuizTimer();
             showCaderno(currentCadernoId);
         }));
-        quizTimer = label("", 18, RED_DARK, true);
-        quizTimer.setGravity(Gravity.CENTER);
-        top.addView(quizTimer);
-        TextView progress = label("Pergunta " + (quizIndex + 1) + " de " + quizQuestions.size() + "  |  Pontos: " + quizScore, 14, MUTED, true);
+        LinearLayout timerRow = new LinearLayout(this);
+        timerRow.setGravity(Gravity.CENTER);
+        quizTimerView = new TimeCircleView(this);
+        timerRow.addView(quizTimerView, new LinearLayout.LayoutParams(dp(78), dp(78)));
+        top.addView(timerRow, matchWrapWithTop(dp(4)));
+        TextView progress = label("Pergunta " + (quizIndex + 1) + " de " + quizQuestions.size() + "  |  Pontos: " + quizScore + "  |  Nivel " + Math.max(1, question.level), 14, MUTED, true);
         progress.setGravity(Gravity.CENTER);
         top.addView(progress);
         root.addView(top);
@@ -800,7 +731,20 @@ public class MainActivity extends Activity {
             final int choice = i;
             root.addView(quizOption(letters[i] + ". " + question.options.get(i), () -> answerQuiz(choice)));
         }
+        animateQuestionIn();
         startQuizTimer();
+    }
+
+    private String quizTitle() {
+        Item caderno = db.get("cadernos", currentCadernoId);
+        if (caderno.name == null || caderno.name.trim().isEmpty()) return "Teste do Caderno";
+        return "Teste do " + caderno.name;
+    }
+
+    private void animateQuestionIn() {
+        root.setAlpha(0f);
+        root.setTranslationY(dp(14));
+        root.animate().alpha(1f).translationY(0).setDuration(230).start();
     }
 
     private TextView quizOption(String value, Runnable action) {
@@ -821,23 +765,34 @@ public class MainActivity extends Activity {
 
     private void startQuizTimer() {
         stopQuizTimer();
-        quizGrace = false;
-        quizDeadline = System.currentTimeMillis() + 30000;
+        quizAnswered = false;
+        quizUsingBonus = false;
+        quizQuestionStartedAt = System.currentTimeMillis();
+        quizBaseDeadline = quizQuestionStartedAt + QUIZ_BASE_TIME_MS;
+        quizDeadline = quizBaseDeadline;
+        quizBonusWindowMs = 0;
         quizTick = () -> {
-            long left = quizDeadline - System.currentTimeMillis();
-            if (left < 0) {
-                if (!quizGrace) {
-                    quizGrace = true;
-                    quizDeadline = System.currentTimeMillis() + 10000;
-                    left = 10000;
+            long now = System.currentTimeMillis();
+            long left = quizDeadline - now;
+            if (left <= 0) {
+                if (!quizUsingBonus && quizBonusSeconds > 0) {
+                    quizUsingBonus = true;
+                    quizBonusWindowMs = quizBonusSeconds * 1000L;
+                    quizBonusSeconds = 0;
+                    quizDeadline = now + quizBonusWindowMs;
+                    if (quizTimerView != null) quizTimerView.flashBonus();
+                    quizHandler.postDelayed(quizTick, 120);
+                    return;
                 } else {
-                    showGameOver("Tempo esgotado.");
+                    showGameOver("Tempo esgotado");
                     return;
                 }
             }
-            if (quizTimer != null) {
-                long seconds = Math.max(0, (left + 999) / 1000);
-                quizTimer.setText(quizGrace ? "Acrescimo: " + seconds + "s" : "Tempo: " + seconds + "s");
+            if (quizTimerView != null) {
+                float total = quizUsingBonus ? Math.max(1f, quizBonusWindowMs) : (float) QUIZ_BASE_TIME_MS;
+                float progress = Math.max(0f, Math.min(1f, left / total));
+                quizTimerView.setProgress(progress);
+                quizTimerView.setUrgent(progress < 0.22f);
             }
             quizHandler.postDelayed(quizTick, 250);
         };
@@ -850,15 +805,55 @@ public class MainActivity extends Activity {
     }
 
     private void answerQuiz(int choice) {
+        if (quizAnswered) return;
+        quizAnswered = true;
         stopQuizTimer();
         QuizQuestion question = quizQuestions.get(quizIndex);
         if (choice != question.correctIndex) {
             showGameOver("Resposta incorreta.");
             return;
         }
-        quizScore += quizGrace ? 5 : 10;
-        quizIndex++;
-        showQuizQuestion();
+        addTimeBonusFromCurrentAnswer();
+        quizScore += 10;
+        showCorrectFeedback(() -> {
+            quizIndex++;
+            showQuizQuestion();
+        });
+    }
+
+    private void addTimeBonusFromCurrentAnswer() {
+        if (quizUsingBonus) return;
+        long left = Math.max(0, quizBaseDeadline - System.currentTimeMillis());
+        int earned = (int) (left / 5000L);
+        if (earned > 0) quizBonusSeconds = Math.min(QUIZ_MAX_BONUS_SECONDS, quizBonusSeconds + earned);
+    }
+
+    private void showCorrectFeedback(Runnable next) {
+        FrameLayout overlay = new FrameLayout(this);
+        overlay.setClickable(false);
+        TextView ok = label("OK", 24, Color.WHITE, true);
+        ok.setGravity(Gravity.CENTER);
+        ok.setBackground(round(GOLD, dp(44), Color.argb(190, 255, 236, 196), 2));
+        FrameLayout.LayoutParams okParams = new FrameLayout.LayoutParams(dp(88), dp(88), Gravity.CENTER);
+        overlay.addView(ok, okParams);
+        addContentView(overlay, new ViewGroup.LayoutParams(-1, -1));
+        ok.setScaleX(0.55f);
+        ok.setScaleY(0.55f);
+        ok.setAlpha(0f);
+        AnimatorSet pop = new AnimatorSet();
+        pop.playTogether(
+                ObjectAnimator.ofFloat(ok, "alpha", 0f, 1f, 0f),
+                ObjectAnimator.ofFloat(ok, "scaleX", 0.55f, 1.08f, 1f),
+                ObjectAnimator.ofFloat(ok, "scaleY", 0.55f, 1.08f, 1f)
+        );
+        pop.setDuration(430);
+        pop.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator animation) {
+                ((ViewGroup) overlay.getParent()).removeView(overlay);
+                next.run();
+            }
+        });
+        pop.start();
     }
 
     private void showQuizResult() {
@@ -888,9 +883,14 @@ public class MainActivity extends Activity {
         configureSystemBars();
         FrameLayout frame = new FrameLayout(this);
         ImageView bg = new ImageView(this);
-        bg.setImageResource(R.drawable.game_over);
+        bg.setImageResource(R.drawable.bg_quiz);
         bg.setScaleType(ImageView.ScaleType.CENTER_CROP);
         frame.addView(bg, new FrameLayout.LayoutParams(-1, -1));
+        ImageView gameBg = new ImageView(this);
+        gameBg.setImageResource(R.drawable.game_over);
+        gameBg.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        gameBg.setAlpha(0f);
+        frame.addView(gameBg, new FrameLayout.LayoutParams(-1, -1));
         LinearLayout overlay = new LinearLayout(this);
         overlay.setOrientation(LinearLayout.VERTICAL);
         overlay.setPadding(dp(14), statusBarHeight() + dp(14), dp(14), dp(18));
@@ -901,16 +901,27 @@ public class MainActivity extends Activity {
         Space spacer = new Space(this);
         overlay.addView(spacer, new LinearLayout.LayoutParams(1, 0, 1));
         LinearLayout card = card();
-        TextView title = label("Game over", 28, RED, true);
+        card.setAlpha(0f);
+        card.setScaleX(0.92f);
+        card.setScaleY(0.92f);
+        TextView title = label("Game Over", 30, RED, true);
         title.setGravity(Gravity.CENTER);
         card.addView(title);
-        TextView msg = label(reason + " Pontuacao: " + quizScore + " pontos.", 16, INK, true);
+        TextView msg = label(reason, 17, INK, true);
         msg.setGravity(Gravity.CENTER);
         card.addView(msg);
+        TextView score = label(String.valueOf(quizScore), 58, RED_DARK, true);
+        score.setGravity(Gravity.CENTER);
+        card.addView(score);
+        TextView pts = label("pontos", 18, MUTED, true);
+        pts.setGravity(Gravity.CENTER);
+        card.addView(pts);
         overlay.addView(card);
         frame.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
         frame.addView(statusBarShield(), new FrameLayout.LayoutParams(-1, statusBarHeight(), Gravity.TOP));
         setContentView(frame);
+        gameBg.animate().alpha(1f).setDuration(760).start();
+        card.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0).setDuration(360).setStartDelay(220).start();
     }
 
     private void showRecipePreview(int id) {
@@ -1567,7 +1578,7 @@ public class MainActivity extends Activity {
     private void showIngredientDialog(String title, Item item) {
         LinearLayout box = themedDialogBox();
         AutoCompleteTextView nome = autoEntry("Nome do ingrediente", db.ingredientAndRecipeNames(currentReceitaId));
-        EditText qtdNumero = entry("Numero", "");
+        EditText qtdNumero = entry("Quantidade", "");
         qtdNumero.setSingleLine(true);
         qtdNumero.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
         AutoCompleteTextView qtdUnidade = unitEntry(item == null ? "un" : parseQuantityUnit(item.desc));
@@ -1685,11 +1696,32 @@ public class MainActivity extends Activity {
     }
 
     private void markLinkedIngredient(LinearLayout card) {
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.argb(235, 245, 250, 255));
-        bg.setStroke(dp(1), LINK);
-        bg.setCornerRadius(dp(18));
-        card.setBackground(bg);
+        card.setBackground(round(CARD_STRONG, dp(18), GOLD, 2));
+        try {
+            LinearLayout row = (LinearLayout) card.getChildAt(0);
+            LinearLayout text = (LinearLayout) row.getChildAt(1);
+            TextView chip = label("receita vinculada", 12, RED_DARK, true);
+            chip.setGravity(Gravity.CENTER);
+            chip.setPadding(dp(9), dp(3), dp(9), dp(3));
+            chip.setBackground(round(Color.argb(72, 217, 154, 59), dp(12), Color.argb(145, 217, 154, 59), 1));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-2, -2);
+            params.setMargins(0, dp(6), 0, 0);
+            text.addView(chip, params);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void scheduleIngredientHighlight(View card) {
+        card.postDelayed(() -> {
+            if (contentScroll != null) contentScroll.smoothScrollTo(0, Math.max(0, card.getTop() - dp(90)));
+            ObjectAnimator fadeOut = ObjectAnimator.ofFloat(card, "alpha", 1f, 0.48f);
+            fadeOut.setDuration(170);
+            ObjectAnimator fadeIn = ObjectAnimator.ofFloat(card, "alpha", 0.48f, 1f);
+            fadeIn.setDuration(170);
+            AnimatorSet blink = new AnimatorSet();
+            blink.playSequentially(fadeOut, fadeIn, fadeOut.clone(), fadeIn.clone());
+            blink.start();
+        }, 260);
     }
 
     private LinearLayout headerInline(String title, Runnable back) {
@@ -1718,21 +1750,27 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, -2, 1);
         textParams.setMargins(dp(8), 0, dp(6), 0);
         row.addView(text, textParams);
-        LinearLayout actions = new LinearLayout(this);
-        actions.setOrientation(LinearLayout.VERTICAL);
-        actions.setGravity(Gravity.CENTER);
-        ImageButton lock = plainIconButton(locked ? R.drawable.ic_lock_closed : R.drawable.ic_lock_open, locked ? RED_DARK : GOLD, dp(3));
-        lock.setContentDescription(locked ? "Protegido" : "Desprotegido");
-        lock.setOnClickListener(v -> {
-            v.setEnabled(false);
-            lockAction.run();
-        });
-        actions.addView(lock, new LinearLayout.LayoutParams(dp(42), dp(32)));
-        ImageButton menu = moreMenuButton(RED);
-        menu.setContentDescription("Opcoes");
-        menu.setOnClickListener(v -> menuAction.run());
-        actions.addView(menu, new LinearLayout.LayoutParams(dp(42), dp(38)));
-        row.addView(actions, new LinearLayout.LayoutParams(dp(46), dp(72)));
+        if (lockAction != null || menuAction != null) {
+            LinearLayout actions = new LinearLayout(this);
+            actions.setOrientation(LinearLayout.VERTICAL);
+            actions.setGravity(Gravity.CENTER);
+            if (lockAction != null) {
+                ImageButton lock = plainIconButton(locked ? R.drawable.ic_lock_closed : R.drawable.ic_lock_open, locked ? RED_DARK : GOLD, dp(3));
+                lock.setContentDescription(locked ? "Protegido" : "Desprotegido");
+                lock.setOnClickListener(v -> {
+                    v.setEnabled(false);
+                    lockAction.run();
+                });
+                actions.addView(lock, new LinearLayout.LayoutParams(dp(42), dp(32)));
+            }
+            if (menuAction != null) {
+                ImageButton menu = moreMenuButton(RED);
+                menu.setContentDescription("Opcoes");
+                menu.setOnClickListener(v -> menuAction.run());
+                actions.addView(menu, new LinearLayout.LayoutParams(dp(42), dp(38)));
+            }
+            row.addView(actions, new LinearLayout.LayoutParams(dp(46), dp(72)));
+        }
         box.addView(row);
         if (tap != null) box.setOnClickListener(v -> tap.run());
         return box;
@@ -1893,10 +1931,10 @@ public class MainActivity extends Activity {
     }
 
     private AutoCompleteTextView unitEntry(String selected) {
-        AutoCompleteTextView e = autoEntry("Unidade", Arrays.asList("un", "kg", "ml", "a gosto"));
+        AutoCompleteTextView e = autoEntry("Unidade", Arrays.asList("un", "kg", "g = grama", "ml", "L = litro", "a gosto"));
         e.setThreshold(0);
         e.setSingleLine(true);
-        e.setText(selected == null || selected.trim().isEmpty() ? "un" : selected.toLowerCase(Locale.ROOT), false);
+        e.setText(selected == null || selected.trim().isEmpty() ? "un" : displayUnit(selected), false);
         e.setOnClickListener(v -> e.showDropDown());
         e.setOnFocusChangeListener((v, hasFocus) -> {
             if (hasFocus) e.showDropDown();
@@ -2250,6 +2288,7 @@ public class MainActivity extends Activity {
     public void onBackPressed() {
         if ("quiz".equals(screen) || "quiz_result".equals(screen) || "game_over".equals(screen)) showCaderno(currentCadernoId);
         else if ("recipe_preview".equals(screen)) showCategoria(currentCategoriaId);
+        else if ("ingrediente_usos".equals(screen)) showIngredientesCaderno();
         else if ("ingredientes_caderno".equals(screen)) showCaderno(currentCadernoId);
         else if ("receita".equals(screen)) backFromReceita();
         else if ("categoria".equals(screen)) showCaderno(currentCadernoId);
@@ -2359,6 +2398,7 @@ public class MainActivity extends Activity {
             currentCategoriaId = state.categoriaId;
             currentReceitaId = state.receitaId;
             if ("receita".equals(state.screen)) showReceita(state.receitaId);
+            else if ("ingrediente_usos".equals(state.screen)) showIngredientRecipes(state.extra);
             else if ("categoria".equals(state.screen)) showCategoria(state.categoriaId);
             else if ("caderno".equals(state.screen)) showCaderno(state.cadernoId);
             else showHome();
@@ -2378,7 +2418,7 @@ public class MainActivity extends Activity {
     }
 
     private String buildQuantity(String number, String unit) {
-        String cleanUnit = unit == null ? "" : unit.trim().toLowerCase(Locale.ROOT);
+        String cleanUnit = normalizeUnit(unit);
         if (cleanUnit.isEmpty()) cleanUnit = "un";
         if ("a gosto".equals(cleanUnit)) return "a gosto";
         String cleanNumber = number == null ? "" : number.trim();
@@ -2389,7 +2429,9 @@ public class MainActivity extends Activity {
         String clean = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
         if (clean.contains("a gosto")) return "a gosto";
         if (clean.endsWith("kg")) return "kg";
+        if (clean.endsWith(" g") || clean.endsWith("g")) return "g";
         if (clean.endsWith("ml")) return "ml";
+        if (clean.endsWith(" l") || (clean.endsWith("l") && !clean.endsWith("ml"))) return "L";
         if (clean.endsWith("un")) return "un";
         return "un";
     }
@@ -2397,9 +2439,27 @@ public class MainActivity extends Activity {
     private String parseQuantityNumber(String value) {
         String clean = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
         if (clean.isEmpty() || clean.contains("a gosto")) return "";
-        for (String unit : new String[]{"kg", "ml", "un"}) {
+        for (String unit : new String[]{"kg", "ml", "un", "g", "l"}) {
             if (clean.endsWith(unit)) return clean.substring(0, clean.length() - unit.length()).trim();
         }
+        return clean;
+    }
+
+    private String normalizeUnit(String unit) {
+        String clean = unit == null ? "" : unit.trim().toLowerCase(Locale.ROOT);
+        if (clean.contains("a gosto")) return "a gosto";
+        if (clean.startsWith("g")) return "g";
+        if (clean.startsWith("l") || clean.contains("litro")) return "L";
+        if (clean.startsWith("kg")) return "kg";
+        if (clean.startsWith("ml")) return "ml";
+        if (clean.startsWith("un")) return "un";
+        return clean;
+    }
+
+    private String displayUnit(String unit) {
+        String clean = normalizeUnit(unit);
+        if ("g".equals(clean)) return "g = grama";
+        if ("L".equals(clean)) return "L = litro";
         return clean;
     }
 
@@ -2410,6 +2470,65 @@ public class MainActivity extends Activity {
     abstract class SimpleWatcher implements TextWatcher {
         public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
         public void onTextChanged(CharSequence s, int start, int before, int count) {}
+    }
+
+    static class TimeCircleView extends View {
+        private final Paint track = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint progressPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF arc = new RectF();
+        private float progress = 1f;
+        private float flash = 0f;
+        private boolean urgent;
+
+        TimeCircleView(Context context) {
+            super(context);
+            track.setStyle(Paint.Style.STROKE);
+            progressPaint.setStyle(Paint.Style.STROKE);
+            progressPaint.setStrokeCap(Paint.Cap.ROUND);
+            glowPaint.setStyle(Paint.Style.FILL);
+        }
+
+        void setProgress(float value) {
+            progress = Math.max(0f, Math.min(1f, value));
+            invalidate();
+        }
+
+        void setUrgent(boolean value) {
+            if (urgent != value) {
+                urgent = value;
+                invalidate();
+            }
+        }
+
+        void flashBonus() {
+            ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f, 0f);
+            animator.setDuration(520);
+            animator.addUpdateListener(a -> {
+                flash = (float) a.getAnimatedValue();
+                invalidate();
+            });
+            animator.start();
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float stroke = Math.max(8f, getWidth() * 0.12f);
+            float pad = stroke / 2f + 3f;
+            arc.set(pad, pad, getWidth() - pad, getHeight() - pad);
+            track.setStrokeWidth(stroke);
+            track.setColor(Color.argb(105, 232, 201, 142));
+            progressPaint.setStrokeWidth(stroke);
+            int base = urgent ? Color.rgb(184, 50, 22) : Color.rgb(217, 154, 59);
+            if (flash > 0f) {
+                glowPaint.setColor(Color.argb((int) (78 * flash), 217, 154, 59));
+                canvas.drawCircle(getWidth() / 2f, getHeight() / 2f, Math.min(getWidth(), getHeight()) * 0.48f, glowPaint);
+            }
+            progressPaint.setColor(base);
+            canvas.drawArc(arc, -90, 360, false, track);
+            canvas.drawArc(arc, -90, 360 * progress, false, progressPaint);
+        }
     }
 
     static class IngredientTokenizer implements MultiAutoCompleteTextView.Tokenizer {
@@ -2445,12 +2564,18 @@ public class MainActivity extends Activity {
         final int cadernoId;
         final int categoriaId;
         final int receitaId;
+        final String extra;
 
         NavState(String screen, int cadernoId, int categoriaId, int receitaId) {
+            this(screen, cadernoId, categoriaId, receitaId, "");
+        }
+
+        NavState(String screen, int cadernoId, int categoriaId, int receitaId, String extra) {
             this.screen = screen;
             this.cadernoId = cadernoId;
             this.categoriaId = categoriaId;
             this.receitaId = receitaId;
+            this.extra = extra == null ? "" : extra;
         }
     }
 
@@ -2458,11 +2583,19 @@ public class MainActivity extends Activity {
         final String prompt;
         final ArrayList<String> options;
         final int correctIndex;
+        final int modelId;
+        final int level;
 
         QuizQuestion(String prompt, ArrayList<String> options, int correctIndex) {
+            this(prompt, options, correctIndex, 0, 0);
+        }
+
+        QuizQuestion(String prompt, ArrayList<String> options, int correctIndex, int modelId, int level) {
             this.prompt = prompt;
             this.options = options;
             this.correctIndex = correctIndex;
+            this.modelId = modelId;
+            this.level = level;
         }
     }
 
@@ -2650,6 +2783,31 @@ public class MainActivity extends Activity {
 
         List<Item> ingredientesCaderno(int caderno, String q) {
             return list("SELECT i.id,i.nome,i.quantidade descricao,(CASE WHEN IFNULL(i.categoria,'')='' THEN r.nome ELSE i.categoria || ' - ' || r.nome END) extra,i.receita_id parent_id,r.caderno_id caderno_id,i.receita_link_id,i.bloqueado FROM ingredientes i JOIN receitas r ON r.id=i.receita_id WHERE r.caderno_id=" + caderno + " ORDER BY i.nome,r.nome", q);
+        }
+
+        List<Item> ingredientesUnicosCaderno(int caderno, String q) {
+            return list("SELECT MIN(i.id) id,i.nome,COUNT(DISTINCT i.receita_id) || ' receitas' descricao,COALESCE(NULLIF(MIN(NULLIF(i.categoria,'')),''),'sem categoria') extra,0 parent_id,r.caderno_id caderno_id,MAX(i.receita_link_id) receita_link_id,0 bloqueado FROM ingredientes i JOIN receitas r ON r.id=i.receita_id WHERE r.caderno_id=" + caderno + " GROUP BY lower(i.nome),r.caderno_id ORDER BY i.nome", q);
+        }
+
+        List<Item> receitasComIngrediente(int caderno, String ingredientName) {
+            String wanted = norm(ingredientName);
+            ArrayList<Item> out = new ArrayList<>();
+            try (Cursor c = getReadableDatabase().rawQuery("SELECT i.id,i.nome,i.quantidade,i.categoria,i.receita_id,r.nome,r.caderno_id,i.receita_link_id,i.bloqueado FROM ingredientes i JOIN receitas r ON r.id=i.receita_id WHERE r.caderno_id=? ORDER BY r.nome", new String[]{String.valueOf(caderno)})) {
+                while (c.moveToNext()) {
+                    if (!norm(c.getString(1)).equals(wanted)) continue;
+                    Item item = new Item();
+                    item.id = c.getInt(0);
+                    item.name = safe(c.getString(5));
+                    item.desc = safe(c.getString(2));
+                    item.extra = safe(c.getString(3));
+                    item.parentId = c.getInt(4);
+                    item.cadernoId = c.getInt(6);
+                    item.recipeLinkId = c.getInt(7);
+                    item.locked = c.getInt(8) != 0;
+                    out.add(item);
+                }
+            }
+            return out;
         }
 
         int findRecipeByName(String name, int receitaAtual) {

@@ -1,12 +1,12 @@
 {
-  "versionCode": 11,
-  "versionName": "0.11.0-java",
+  "versionCode": 12,
+  "versionName": "0.12.0-java",
   "critical": false,
   "pageUrl": "https://mbzerker.github.io/CadernoReceitas/",
-  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.11.0-java.apk",
-  "sha256": "87E73C436C639DF2F73B42DD3BB7642A0D66D1952C6DF83CBD1EFC009A35FD93",
-  "sizeBytes": 22699238,
+  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.12.0-java.apk",
+  "sha256": "808ED18EFE5CE3D80D8664438A06D452A160A0EE31E80449BDA091C5CC19B2C2",
+  "sizeBytes": 22722323,
   "signatureSha256": "f8dec9a06ec4eaf93a1a9b7f5b5cf73490d54d227f0ee172f83177557c79bfe8",
   "origin": "GitHub Pages oficial do Caderno de Receitas",
-  "changelog": "Ajustes de teste, receita e ingredientes: confirmacao antes do teste, botao voltar na prova, 30 modelos de perguntas mais variados, receitas novas abrem direto e nascem desbloqueadas, cards de receita mostram apenas nome e quantidade de ingredientes, autocomplete normalizado sem diferenciar acentos/cedilha/maiusculas, quantidade separada em numero e unidade, categoria sugerida salva automaticamente e preview de impressao sem categoria."
+  "changelog": "Refinamento grande do teste e dos ingredientes: banco de 100 modelos por nivel, rodada progressiva com ate 30 perguntas, titulo dinamico por caderno, timer circular sem numeros, reserva de bonus de tempo, transicoes animadas, game over com fade e pontuacao destacada, unidades g e L, campo Quantidade, lista unica de ingredientes, tela de receitas relacionadas com destaque piscando e selo tematico para ingredientes vinculados."
 }
