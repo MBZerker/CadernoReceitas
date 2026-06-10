@@ -1,12 +1,12 @@
 {
-  "versionCode": 12,
-  "versionName": "0.12.0-java",
+  "versionCode": 13,
+  "versionName": "0.13.0-java",
   "critical": false,
   "pageUrl": "https://mbzerker.github.io/CadernoReceitas/",
-  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.12.0-java.apk",
-  "sha256": "808ED18EFE5CE3D80D8664438A06D452A160A0EE31E80449BDA091C5CC19B2C2",
-  "sizeBytes": 22722323,
+  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.13.0-java.apk",
+  "sha256": "196DBD341E37AC7FEC4267AE7CCAEE446951A50AEFD7443F84CCEE0D04124BDE",
+  "sizeBytes": 22723292,
   "signatureSha256": "f8dec9a06ec4eaf93a1a9b7f5b5cf73490d54d227f0ee172f83177557c79bfe8",
   "origin": "GitHub Pages oficial do Caderno de Receitas",
-  "changelog": "Refinamento grande do teste e dos ingredientes: banco de 100 modelos por nivel, rodada progressiva com ate 30 perguntas, titulo dinamico por caderno, timer circular sem numeros, reserva de bonus de tempo, transicoes animadas, game over com fade e pontuacao destacada, unidades g e L, campo Quantidade, lista unica de ingredientes, tela de receitas relacionadas com destaque piscando e selo tematico para ingredientes vinculados."
+  "changelog": "Ajustes de unidade e animacao do teste: dropdown mostra unidades por extenso e salva abreviado, primeira pergunta entra deslizando pelas laterais, perguntas seguintes entram com movimentos variados, erro destaca resposta escolhida e correta antes do game over, painel de game over entra mais devagar e ganhou botao Reiniciar."
 }

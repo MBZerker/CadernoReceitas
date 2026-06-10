@@ -79,7 +79,10 @@ public class MainActivity extends Activity {
     private final Handler quizHandler = new Handler(Looper.getMainLooper());
     private final ArrayList<QuizQuestion> quizQuestions = new ArrayList<>();
     private Runnable quizTick;
+    private Runnable quizPendingGameOver;
     private TimeCircleView quizTimerView;
+    private final ArrayList<View> quizAnimatedViews = new ArrayList<>();
+    private final ArrayList<TextView> quizOptionViews = new ArrayList<>();
     private int quizIndex;
     private int quizScore;
     private long quizDeadline;
@@ -704,6 +707,8 @@ public class MainActivity extends Activity {
         }
         base(R.drawable.bg_quiz);
         QuizQuestion question = quizQuestions.get(quizIndex);
+        quizAnimatedViews.clear();
+        quizOptionViews.clear();
 
         LinearLayout top = card();
         top.addView(headerInline(quizTitle(), () -> {
@@ -719,17 +724,22 @@ public class MainActivity extends Activity {
         progress.setGravity(Gravity.CENTER);
         top.addView(progress);
         root.addView(top);
+        quizAnimatedViews.add(top);
 
         LinearLayout questionCard = card();
         TextView q = label(question.prompt, 20, INK, true);
         q.setGravity(Gravity.CENTER);
         questionCard.addView(q);
         root.addView(questionCard);
+        quizAnimatedViews.add(questionCard);
 
         String[] letters = {"A", "B", "C", "D"};
         for (int i = 0; i < question.options.size(); i++) {
             final int choice = i;
-            root.addView(quizOption(letters[i] + ". " + question.options.get(i), () -> answerQuiz(choice)));
+            TextView option = quizOption(letters[i] + ". " + question.options.get(i), () -> answerQuiz(choice));
+            quizOptionViews.add(option);
+            root.addView(option);
+            quizAnimatedViews.add(option);
         }
         animateQuestionIn();
         startQuizTimer();
@@ -742,9 +752,35 @@ public class MainActivity extends Activity {
     }
 
     private void animateQuestionIn() {
-        root.setAlpha(0f);
-        root.setTranslationY(dp(14));
-        root.animate().alpha(1f).translationY(0).setDuration(230).start();
+        if (quizAnimatedViews.isEmpty()) return;
+        Random random = new Random();
+        boolean firstQuestion = quizIndex == 0;
+        for (int i = 0; i < quizAnimatedViews.size(); i++) {
+            View view = quizAnimatedViews.get(i);
+            view.setAlpha(0f);
+            int direction = firstQuestion ? i % 2 : random.nextInt(4);
+            if (direction == 0) {
+                view.setTranslationX(-getResources().getDisplayMetrics().widthPixels);
+                view.setTranslationY(0);
+            } else if (direction == 1) {
+                view.setTranslationX(getResources().getDisplayMetrics().widthPixels);
+                view.setTranslationY(0);
+            } else if (direction == 2) {
+                view.setTranslationX(0);
+                view.setTranslationY(dp(80));
+            } else {
+                view.setTranslationX(0);
+                view.setTranslationY(-dp(80));
+            }
+            long delay = firstQuestion ? i * 95L : (random.nextBoolean() ? i * 40L : random.nextInt(160));
+            view.animate()
+                    .alpha(1f)
+                    .translationX(0)
+                    .translationY(0)
+                    .setStartDelay(delay)
+                    .setDuration(firstQuestion ? 360 : 240)
+                    .start();
+        }
     }
 
     private TextView quizOption(String value, Runnable action) {
@@ -801,7 +837,9 @@ public class MainActivity extends Activity {
 
     private void stopQuizTimer() {
         if (quizTick != null) quizHandler.removeCallbacks(quizTick);
+        if (quizPendingGameOver != null) quizHandler.removeCallbacks(quizPendingGameOver);
         quizTick = null;
+        quizPendingGameOver = null;
     }
 
     private void answerQuiz(int choice) {
@@ -810,7 +848,7 @@ public class MainActivity extends Activity {
         stopQuizTimer();
         QuizQuestion question = quizQuestions.get(quizIndex);
         if (choice != question.correctIndex) {
-            showGameOver("Resposta incorreta.");
+            showWrongAnswerFeedback(choice, question.correctIndex);
             return;
         }
         addTimeBonusFromCurrentAnswer();
@@ -854,6 +892,30 @@ public class MainActivity extends Activity {
             }
         });
         pop.start();
+    }
+
+    private void showWrongAnswerFeedback(int wrongIndex, int correctIndex) {
+        for (TextView option : quizOptionViews) option.setEnabled(false);
+        if (wrongIndex >= 0 && wrongIndex < quizOptionViews.size()) {
+            TextView wrong = quizOptionViews.get(wrongIndex);
+            wrong.setTextColor(RED_DARK);
+            wrong.setBackground(round(Color.rgb(255, 230, 224), dp(18), Color.rgb(210, 76, 52), 2));
+        }
+        if (correctIndex >= 0 && correctIndex < quizOptionViews.size()) {
+            TextView correct = quizOptionViews.get(correctIndex);
+            correct.setTextColor(Color.rgb(31, 96, 55));
+            correct.setBackground(round(Color.rgb(226, 245, 231), dp(18), Color.rgb(64, 145, 88), 2));
+            ObjectAnimator pulseX = ObjectAnimator.ofFloat(correct, "scaleX", 1f, 1.025f, 1f);
+            ObjectAnimator pulseY = ObjectAnimator.ofFloat(correct, "scaleY", 1f, 1.025f, 1f);
+            AnimatorSet pulse = new AnimatorSet();
+            pulse.playTogether(pulseX, pulseY);
+            pulse.setDuration(520);
+            pulse.start();
+        }
+        quizPendingGameOver = () -> {
+            if ("quiz".equals(screen)) showGameOver("Resposta incorreta");
+        };
+        quizHandler.postDelayed(quizPendingGameOver, 3000);
     }
 
     private void showQuizResult() {
@@ -916,12 +978,17 @@ public class MainActivity extends Activity {
         TextView pts = label("pontos", 18, MUTED, true);
         pts.setGravity(Gravity.CENTER);
         card.addView(pts);
+        LinearLayout row = iconStrip();
+        addWeightedStripIcon(row, R.drawable.ic_report, RED_DARK, "Reiniciar", v -> startQuizOrExplain());
+        addWeightedStripIcon(row, R.drawable.ic_back, RED, "Voltar", v -> showCaderno(currentCadernoId));
+        card.addView(row, actionStripParams());
         overlay.addView(card);
         frame.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
         frame.addView(statusBarShield(), new FrameLayout.LayoutParams(-1, statusBarHeight(), Gravity.TOP));
         setContentView(frame);
-        gameBg.animate().alpha(1f).setDuration(760).start();
-        card.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0).setDuration(360).setStartDelay(220).start();
+        card.setTranslationY(dp(26));
+        gameBg.animate().alpha(1f).setDuration(1200).start();
+        card.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0).setDuration(720).setStartDelay(520).start();
     }
 
     private void showRecipePreview(int id) {
@@ -1931,10 +1998,10 @@ public class MainActivity extends Activity {
     }
 
     private AutoCompleteTextView unitEntry(String selected) {
-        AutoCompleteTextView e = autoEntry("Unidade", Arrays.asList("un", "kg", "g = grama", "ml", "L = litro", "a gosto"));
+        AutoCompleteTextView e = autoEntry("Unidade", Arrays.asList("Unidade", "Quilograma", "Grama", "Mililitro", "Litro", "A gosto"));
         e.setThreshold(0);
         e.setSingleLine(true);
-        e.setText(selected == null || selected.trim().isEmpty() ? "un" : displayUnit(selected), false);
+        e.setText(selected == null || selected.trim().isEmpty() ? "Unidade" : displayUnit(selected), false);
         e.setOnClickListener(v -> e.showDropDown());
         e.setOnFocusChangeListener((v, hasFocus) -> {
             if (hasFocus) e.showDropDown();
@@ -2448,19 +2515,24 @@ public class MainActivity extends Activity {
     private String normalizeUnit(String unit) {
         String clean = unit == null ? "" : unit.trim().toLowerCase(Locale.ROOT);
         if (clean.contains("a gosto")) return "a gosto";
-        if (clean.startsWith("g")) return "g";
+        if (clean.startsWith("grama") || clean.equals("g")) return "g";
         if (clean.startsWith("l") || clean.contains("litro")) return "L";
         if (clean.startsWith("kg")) return "kg";
-        if (clean.startsWith("ml")) return "ml";
-        if (clean.startsWith("un")) return "un";
+        if (clean.startsWith("quilograma")) return "kg";
+        if (clean.startsWith("ml") || clean.startsWith("mililitro")) return "ml";
+        if (clean.startsWith("unidade") || clean.startsWith("un")) return "un";
         return clean;
     }
 
     private String displayUnit(String unit) {
         String clean = normalizeUnit(unit);
-        if ("g".equals(clean)) return "g = grama";
-        if ("L".equals(clean)) return "L = litro";
-        return clean;
+        if ("g".equals(clean)) return "Grama";
+        if ("L".equals(clean)) return "Litro";
+        if ("kg".equals(clean)) return "Quilograma";
+        if ("ml".equals(clean)) return "Mililitro";
+        if ("un".equals(clean)) return "Unidade";
+        if ("a gosto".equals(clean)) return "A gosto";
+        return unit == null || unit.trim().isEmpty() ? "Unidade" : unit;
     }
 
     interface Choice { void pick(int which); }
