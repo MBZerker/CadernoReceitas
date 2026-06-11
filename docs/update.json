@@ -1,12 +1,12 @@
 {
-  "versionCode": 13,
-  "versionName": "0.13.0-java",
+  "versionCode": 14,
+  "versionName": "0.14.0-java",
   "critical": false,
   "pageUrl": "https://mbzerker.github.io/CadernoReceitas/",
-  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.13.0-java.apk",
-  "sha256": "196DBD341E37AC7FEC4267AE7CCAEE446951A50AEFD7443F84CCEE0D04124BDE",
-  "sizeBytes": 22723292,
+  "apkUrl": "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.14.0-java.apk",
+  "sha256": "6B8C61CB2A4FD38ABEEFC31FAB526C21A8B215498D2A269F3360DBFEBBDA608E",
+  "sizeBytes": 22727936,
   "signatureSha256": "f8dec9a06ec4eaf93a1a9b7f5b5cf73490d54d227f0ee172f83177557c79bfe8",
   "origin": "GitHub Pages oficial do Caderno de Receitas",
-  "changelog": "Ajustes de unidade e animacao do teste: dropdown mostra unidades por extenso e salva abreviado, primeira pergunta entra deslizando pelas laterais, perguntas seguintes entram com movimentos variados, erro destaca resposta escolhida e correta antes do game over, painel de game over entra mais devagar e ganhou botao Reiniciar."
+  "changelog": "Revisao do modo Teste e compartilhamento: validacao final descarta perguntas ambiguas ou com mais de uma resposta correta, unidades foram centralizadas para impedir mililitro virar L, tela do quiz ganhou HUD com pontuacao/nivel/fase e palavras-chave destacadas, acerto/erro destacam alternativas, e receitas agora podem ser exportadas/compartilhadas como PNG ou PDF via FileProvider."
 }

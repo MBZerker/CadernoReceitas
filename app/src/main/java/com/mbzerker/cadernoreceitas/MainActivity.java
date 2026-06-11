@@ -8,11 +8,13 @@ import android.os.*;
 import android.content.*;
 import android.database.Cursor;
 import android.database.sqlite.*;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Typeface;
+import android.graphics.pdf.PdfDocument;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
@@ -23,7 +25,11 @@ import android.print.PrintManager;
 import android.provider.Settings;
 import android.text.Editable;
 import android.text.InputType;
+import android.text.SpannableString;
+import android.text.Spanned;
 import android.text.TextWatcher;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.StyleSpan;
 import android.util.Base64;
 import android.view.*;
 import android.webkit.WebView;
@@ -342,7 +348,7 @@ public class MainActivity extends Activity {
         ingredientActions.addView(centeredLabel("Adicione os ingredientes desta receita.", 14, MUTED, false));
         LinearLayout receitaActions = iconStrip();
         addWeightedStripIcon(receitaActions, R.drawable.ic_plus, RED, "Adicionar ingrediente", v -> newIngrediente());
-        addWeightedStripIcon(receitaActions, R.drawable.ic_share_nodes, RED_DARK, "Compartilhar receita", v -> shareReceita(currentReceitaId));
+        addWeightedStripIcon(receitaActions, R.drawable.ic_share_nodes, RED_DARK, "Compartilhar receita", v -> showRecipeShareOptions(currentReceitaId));
         ingredientActions.addView(receitaActions, actionStripParams());
         root.addView(ingredientActions);
 
@@ -720,14 +726,13 @@ public class MainActivity extends Activity {
         quizTimerView = new TimeCircleView(this);
         timerRow.addView(quizTimerView, new LinearLayout.LayoutParams(dp(78), dp(78)));
         top.addView(timerRow, matchWrapWithTop(dp(4)));
-        TextView progress = label("Pergunta " + (quizIndex + 1) + " de " + quizQuestions.size() + "  |  Pontos: " + quizScore + "  |  Nivel " + Math.max(1, question.level), 14, MUTED, true);
-        progress.setGravity(Gravity.CENTER);
-        top.addView(progress);
+        top.addView(quizHud(question));
         root.addView(top);
         quizAnimatedViews.add(top);
 
         LinearLayout questionCard = card();
         TextView q = label(question.prompt, 20, INK, true);
+        q.setText(highlightQuizText(question.prompt));
         q.setGravity(Gravity.CENTER);
         questionCard.addView(q);
         root.addView(questionCard);
@@ -749,6 +754,52 @@ public class MainActivity extends Activity {
         Item caderno = db.get("cadernos", currentCadernoId);
         if (caderno.name == null || caderno.name.trim().isEmpty()) return "Teste do Caderno";
         return "Teste do " + caderno.name;
+    }
+
+    private LinearLayout quizHud(QuizQuestion question) {
+        LinearLayout grid = new LinearLayout(this);
+        grid.setOrientation(LinearLayout.HORIZONTAL);
+        grid.setGravity(Gravity.CENTER);
+        grid.setPadding(0, dp(8), 0, 0);
+        grid.addView(statChip("Pergunta", (quizIndex + 1) + "/" + quizQuestions.size(), RED_DARK), new LinearLayout.LayoutParams(0, -2, 1));
+        grid.addView(statChip("Pontos", String.valueOf(quizScore), GOLD), new LinearLayout.LayoutParams(0, -2, 1));
+        grid.addView(statChip("Nivel", String.valueOf(Math.max(1, question.level)), RED), new LinearLayout.LayoutParams(0, -2, 1));
+        grid.addView(statChip("Fase", phaseLabel(question.level), MUTED), new LinearLayout.LayoutParams(0, -2, 1));
+        return grid;
+    }
+
+    private TextView statChip(String labelText, String valueText, int color) {
+        TextView chip = label(labelText + "\n" + valueText, 13, color, true);
+        chip.setGravity(Gravity.CENTER);
+        chip.setPadding(dp(6), dp(7), dp(6), dp(7));
+        chip.setBackground(round(Color.argb(168, 255, 247, 237), dp(14), Color.argb(125, 232, 201, 142), 1));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -2, 1);
+        params.setMargins(dp(3), 0, dp(3), 0);
+        chip.setLayoutParams(params);
+        return chip;
+    }
+
+    private String phaseLabel(int level) {
+        if (level <= 1) return "Base";
+        if (level == 2) return "Associar";
+        if (level == 3) return "Preparo";
+        if (level == 4) return "Avancado";
+        return "Desafio";
+    }
+
+    private SpannableString highlightQuizText(String value) {
+        SpannableString span = new SpannableString(value == null ? "" : value);
+        String clean = norm(value);
+        for (String keyword : new String[]{"modo de preparo", "receitas", "receita", "ingredientes", "ingrediente", "gramatura", "quantidade", "unidade", "categoria", "preparo", "etapa", "pontuacao", "nivel", "fase", "tempo"}) {
+            int from = clean.indexOf(norm(keyword));
+            while (from >= 0) {
+                int to = Math.min(span.length(), from + keyword.length());
+                span.setSpan(new ForegroundColorSpan(RED_DARK), from, to, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                span.setSpan(new StyleSpan(Typeface.BOLD), from, to, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                from = clean.indexOf(norm(keyword), from + keyword.length());
+            }
+        }
+        return span;
     }
 
     private void animateQuestionIn() {
@@ -789,6 +840,15 @@ public class MainActivity extends Activity {
         option.setBackground(round(CARD_STRONG, dp(18), LINE, 1));
         option.setMinHeight(dp(68));
         option.setGravity(Gravity.CENTER_VERTICAL);
+        option.setOnTouchListener((v, event) -> {
+            if (!v.isEnabled()) return false;
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                v.animate().scaleX(0.985f).scaleY(0.985f).setDuration(90).start();
+            } else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
+                v.animate().scaleX(1f).scaleY(1f).setDuration(120).start();
+            }
+            return false;
+        });
         option.setOnClickListener(v -> {
             v.setEnabled(false);
             action.run();
@@ -853,7 +913,7 @@ public class MainActivity extends Activity {
         }
         addTimeBonusFromCurrentAnswer();
         quizScore += 10;
-        showCorrectFeedback(() -> {
+        showCorrectFeedback(choice, () -> {
             quizIndex++;
             showQuizQuestion();
         });
@@ -866,10 +926,16 @@ public class MainActivity extends Activity {
         if (earned > 0) quizBonusSeconds = Math.min(QUIZ_MAX_BONUS_SECONDS, quizBonusSeconds + earned);
     }
 
-    private void showCorrectFeedback(Runnable next) {
+    private void showCorrectFeedback(int correctIndex, Runnable next) {
+        for (TextView option : quizOptionViews) option.setEnabled(false);
+        if (correctIndex >= 0 && correctIndex < quizOptionViews.size()) {
+            TextView correct = quizOptionViews.get(correctIndex);
+            correct.setTextColor(Color.rgb(31, 96, 55));
+            correct.setBackground(round(Color.rgb(226, 245, 231), dp(18), Color.rgb(64, 145, 88), 2));
+        }
         FrameLayout overlay = new FrameLayout(this);
         overlay.setClickable(false);
-        TextView ok = label("OK", 24, Color.WHITE, true);
+        TextView ok = label("+10", 24, Color.WHITE, true);
         ok.setGravity(Gravity.CENTER);
         ok.setBackground(round(GOLD, dp(44), Color.argb(190, 255, 236, 196), 2));
         FrameLayout.LayoutParams okParams = new FrameLayout.LayoutParams(dp(88), dp(88), Gravity.CENTER);
@@ -1057,6 +1123,12 @@ public class MainActivity extends Activity {
         TextView title = printText(receita.name, 24, true);
         title.setGravity(Gravity.CENTER);
         page.addView(title, matchWrap());
+        Item caderno = db.get("cadernos", receita.cadernoId);
+        if (caderno.name != null && !caderno.name.trim().isEmpty()) {
+            TextView source = printText("Caderno: " + caderno.name, 12, false);
+            source.setGravity(Gravity.CENTER);
+            page.addView(source, matchWrapWithTop(dp(4)));
+        }
 
         List<Item> ingredients = db.ingredientes(receita.id, "");
         page.addView(printText("Ingredientes", 18, true), matchWrapWithTop(dp(24)));
@@ -1152,6 +1224,101 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             toast("Nao foi possivel compartilhar esta receita.");
         }
+    }
+
+    private void showRecipeShareOptions(int id) {
+        actions("Compartilhar receita", new String[]{"Compartilhar link", "Compartilhar como PNG", "Compartilhar como PDF"}, which -> {
+            if (which == 0) shareReceita(id);
+            if (which == 1) exportRecipePng(id);
+            if (which == 2) exportRecipePdf(id);
+        });
+    }
+
+    private void exportRecipePng(int id) {
+        try {
+            Item receita = db.getReceita(id);
+            Bitmap bitmap = renderRecipeBitmap(receita, 1080);
+            File out = new File(exportDir(), safeFileName(receita.name) + ".png");
+            try (FileOutputStream stream = new FileOutputStream(out)) {
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
+            }
+            shareFile("Compartilhar receita em PNG", out, "image/png", "Receita - " + receita.name);
+        } catch (Exception e) {
+            toast("Nao foi possivel gerar o PNG.");
+        }
+    }
+
+    private void exportRecipePdf(int id) {
+        try {
+            Item receita = db.getReceita(id);
+            Bitmap bitmap = renderRecipeBitmap(receita, 1080);
+            File out = new File(exportDir(), safeFileName(receita.name) + ".pdf");
+            writeRecipePdf(bitmap, out);
+            shareFile("Compartilhar receita em PDF", out, "application/pdf", "Receita - " + receita.name);
+        } catch (Exception e) {
+            toast("Nao foi possivel gerar o PDF.");
+        }
+    }
+
+    private Bitmap renderRecipeBitmap(Item receita, int width) {
+        LinearLayout page = printPage();
+        fillRecipePreview(page, receita);
+        page.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        int height = Math.max(page.getMeasuredHeight(), dp(620));
+        page.layout(0, 0, width, height);
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        canvas.drawColor(Color.WHITE);
+        page.draw(canvas);
+        return bitmap;
+    }
+
+    private void writeRecipePdf(Bitmap bitmap, File out) throws IOException {
+        PdfDocument document = new PdfDocument();
+        int pageWidth = 595;
+        int pageHeight = 842;
+        float scale = pageWidth / (float) bitmap.getWidth();
+        int sliceHeight = Math.max(1, (int) (pageHeight / scale));
+        int pageNumber = 1;
+        for (int y = 0; y < bitmap.getHeight(); y += sliceHeight) {
+            PdfDocument.PageInfo info = new PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber++).create();
+            PdfDocument.Page page = document.startPage(info);
+            Canvas canvas = page.getCanvas();
+            canvas.drawColor(Color.WHITE);
+            canvas.save();
+            canvas.scale(scale, scale);
+            canvas.drawBitmap(bitmap, 0, -y, null);
+            canvas.restore();
+            document.finishPage(page);
+        }
+        try (FileOutputStream stream = new FileOutputStream(out)) {
+            document.writeTo(stream);
+        } finally {
+            document.close();
+        }
+    }
+
+    private File exportDir() {
+        File dir = new File(getCacheDir(), "exports");
+        if (!dir.exists()) dir.mkdirs();
+        return dir;
+    }
+
+    private String safeFileName(String value) {
+        String clean = norm(value).replaceAll("[^a-z0-9]+", "-");
+        while (clean.startsWith("-")) clean = clean.substring(1);
+        while (clean.endsWith("-")) clean = clean.substring(0, clean.length() - 1);
+        return clean.isEmpty() ? "receita" : clean;
+    }
+
+    private void shareFile(String chooserTitle, File file, String mime, String subject) {
+        Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
+        Intent send = new Intent(Intent.ACTION_SEND);
+        send.setType(mime);
+        send.putExtra(Intent.EXTRA_SUBJECT, subject);
+        send.putExtra(Intent.EXTRA_STREAM, uri);
+        send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivity(Intent.createChooser(send, chooserTitle));
     }
 
     private void sharePublicUrl(String chooserTitle, String link, String subject) {
@@ -2516,10 +2683,10 @@ public class MainActivity extends Activity {
         String clean = unit == null ? "" : unit.trim().toLowerCase(Locale.ROOT);
         if (clean.contains("a gosto")) return "a gosto";
         if (clean.startsWith("grama") || clean.equals("g")) return "g";
-        if (clean.startsWith("l") || clean.contains("litro")) return "L";
         if (clean.startsWith("kg")) return "kg";
         if (clean.startsWith("quilograma")) return "kg";
         if (clean.startsWith("ml") || clean.startsWith("mililitro")) return "ml";
+        if (clean.equals("l") || clean.startsWith("litro")) return "L";
         if (clean.startsWith("unidade") || clean.startsWith("un")) return "un";
         return clean;
     }
