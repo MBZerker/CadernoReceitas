@@ -84,6 +84,7 @@ public class MainActivity extends Activity {
     private final ArrayDeque<NavState> backStack = new ArrayDeque<>();
     private final Handler quizHandler = new Handler(Looper.getMainLooper());
     private final ArrayList<QuizQuestion> quizQuestions = new ArrayList<>();
+    private final HashMap<String, Integer> sortModes = new HashMap<>();
     private Runnable quizTick;
     private Runnable quizPendingGameOver;
     private TimeCircleView quizTimerView;
@@ -170,7 +171,7 @@ public class MainActivity extends Activity {
 
         LinearLayout actions = card();
         actions.addView(titleRow(R.drawable.ic_book, "Caderno de Receitas", 26));
-        actions.addView(centeredLabel("Organize cadernos, grupos, receitas e ingredientes.", 14, MUTED, false));
+        actions.addView(centeredLabel("Organize cadernos, tipos de receitas, receitas e ingredientes.", 14, MUTED, false));
         LinearLayout row = iconStrip();
         addWeightedStripIcon(row, R.drawable.ic_plus, RED, "Novo caderno", v -> newCaderno());
         addWeightedStripIcon(row, R.drawable.ic_share_nodes, RED_DARK, "Compartilhar app", v -> shareApp());
@@ -188,6 +189,7 @@ public class MainActivity extends Activity {
     private void renderHomeList() {
         listArea.removeAllViews();
         List<Item> items = db.cadernos(text(search));
+        sortItems(items);
         if (items.isEmpty()) {
             listArea.addView(empty("Nenhum caderno criado.", "Toque em + para criar o primeiro caderno."));
             return;
@@ -207,17 +209,17 @@ public class MainActivity extends Activity {
         root.addView(header(R.drawable.ic_book, caderno.name, caderno.desc, this::showHome));
 
         LinearLayout add = card();
-        add.addView(titleRow(R.drawable.ic_category, "Grupo", 20));
-        add.addView(centeredLabel("Crie grupos para separar massas, doces, molhos e outros preparos.", 14, MUTED, false));
+        add.addView(titleRow(R.drawable.ic_category, "Tipo de receitas", 20));
+        add.addView(centeredLabel("Crie tipos para separar salgados, doces, massas, molhos e outros preparos.", 14, MUTED, false));
         LinearLayout cadernoActions = iconStrip();
-        addWeightedStripIcon(cadernoActions, R.drawable.ic_plus, RED, "Adicionar grupo", v -> newCategoria());
+        addWeightedStripIcon(cadernoActions, R.drawable.ic_plus, RED, "Adicionar tipo de receitas", v -> newCategoria());
         addWeightedStripIcon(cadernoActions, R.drawable.ic_clipboard_list, GOLD, "Ingredientes cadastrados", v -> showIngredientesCaderno());
         addWeightedStripIcon(cadernoActions, R.drawable.ic_report, RED_DARK, "Teste", v -> askStartQuiz());
         addWeightedStripIcon(cadernoActions, R.drawable.ic_share_nodes, RED, "Compartilhar caderno", v -> shareCaderno(currentCadernoId));
         add.addView(cadernoActions, actionStripParams());
         root.addView(add);
 
-        addSearch("Pesquisar grupos", this::renderCategorias);
+        addSearch("Pesquisar tipos", this::renderCategorias);
         listArea = new LinearLayout(this);
         listArea.setOrientation(LinearLayout.VERTICAL);
         root.addView(listArea);
@@ -227,8 +229,9 @@ public class MainActivity extends Activity {
     private void renderCategorias() {
         listArea.removeAllViews();
         List<Item> items = db.categorias(currentCadernoId, text(search));
+        sortItems(items);
         if (items.isEmpty()) {
-            listArea.addView(empty("Nenhum grupo.", "Crie um grupo para organizar receitas."));
+            listArea.addView(empty("Nenhum tipo de receitas.", "Crie um tipo para organizar receitas."));
             return;
         }
         for (Item item : items) {
@@ -252,6 +255,7 @@ public class MainActivity extends Activity {
     private void renderIngredientesCaderno() {
         listArea.removeAllViews();
         List<Item> items = db.ingredientesUnicosCaderno(currentCadernoId, text(search));
+        sortItems(items);
         if (items.isEmpty()) {
             listArea.addView(empty("Nenhum ingrediente cadastrado.", "Os ingredientes aparecem aqui conforme forem adicionados nas receitas."));
             return;
@@ -276,6 +280,7 @@ public class MainActivity extends Activity {
     private void renderIngredientRecipes(String ingredientName) {
         listArea.removeAllViews();
         List<Item> items = db.receitasComIngrediente(currentCadernoId, ingredientName);
+        sortItems(items);
         if (items.isEmpty()) {
             listArea.addView(empty("Nenhuma receita encontrada.", "Este ingrediente ainda nao esta em receitas deste caderno."));
             return;
@@ -300,7 +305,7 @@ public class MainActivity extends Activity {
 
         LinearLayout add = card();
         add.addView(titleRow(R.drawable.ic_recipe, "Receita", 20));
-        add.addView(centeredLabel("Cadastre receitas deste grupo.", 14, MUTED, false));
+        add.addView(centeredLabel("Cadastre receitas deste tipo.", 14, MUTED, false));
         addActionButton(add, R.drawable.ic_plus, "Adicionar receita", v -> newReceita());
         root.addView(add);
 
@@ -314,8 +319,9 @@ public class MainActivity extends Activity {
     private void renderReceitas() {
         listArea.removeAllViews();
         List<Item> items = db.receitas(currentCategoriaId, text(search));
+        sortItems(items);
         if (items.isEmpty()) {
-            listArea.addView(empty("Nenhuma receita.", "Adicione a primeira receita deste grupo."));
+            listArea.addView(empty("Nenhuma receita.", "Adicione a primeira receita deste tipo."));
             return;
         }
         for (Item item : items) {
@@ -371,6 +377,7 @@ public class MainActivity extends Activity {
     private void renderIngredientes() {
         listArea.removeAllViews();
         List<Item> items = db.ingredientes(currentReceitaId, text(search));
+        sortItems(items);
         if (items.isEmpty()) {
             listArea.addView(empty("Nenhum ingrediente.", "Cadastre os ingredientes desta receita."));
             return;
@@ -788,16 +795,29 @@ public class MainActivity extends Activity {
     }
 
     private SpannableString highlightQuizText(String value) {
-        SpannableString span = new SpannableString(value == null ? "" : value);
-        String clean = norm(value);
-        for (String keyword : new String[]{"modo de preparo", "receitas", "receita", "ingredientes", "ingrediente", "gramatura", "quantidade", "unidade", "categoria", "preparo", "etapa", "pontuacao", "nivel", "fase", "tempo"}) {
-            int from = clean.indexOf(norm(keyword));
-            while (from >= 0) {
-                int to = Math.min(span.length(), from + keyword.length());
-                span.setSpan(new ForegroundColorSpan(RED_DARK), from, to, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                span.setSpan(new StyleSpan(Typeface.BOLD), from, to, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                from = clean.indexOf(norm(keyword), from + keyword.length());
+        String source = value == null ? "" : value;
+        StringBuilder display = new StringBuilder();
+        ArrayList<int[]> ranges = new ArrayList<>();
+        boolean inside = false;
+        int start = -1;
+        for (int i = 0; i < source.length(); i++) {
+            char c = source.charAt(i);
+            if (c == '"') {
+                if (!inside) {
+                    inside = true;
+                    start = display.length();
+                } else {
+                    inside = false;
+                    if (display.length() > start) ranges.add(new int[]{start, display.length()});
+                }
+                continue;
             }
+            display.append(c);
+        }
+        SpannableString span = new SpannableString(display.toString());
+        for (int[] range : ranges) {
+            span.setSpan(new ForegroundColorSpan(RED_DARK), range[0], range[1], Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            span.setSpan(new StyleSpan(Typeface.BOLD), range[0], range[1], Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         return span;
     }
@@ -900,6 +920,8 @@ public class MainActivity extends Activity {
         if (quizPendingGameOver != null) quizHandler.removeCallbacks(quizPendingGameOver);
         quizTick = null;
         quizPendingGameOver = null;
+        if (root != null) root.setOnClickListener(null);
+        if (contentScroll != null) contentScroll.setOnClickListener(null);
     }
 
     private void answerQuiz(int choice) {
@@ -978,10 +1000,17 @@ public class MainActivity extends Activity {
             pulse.setDuration(520);
             pulse.start();
         }
-        quizPendingGameOver = () -> {
+        View.OnClickListener finishWrong = v -> {
+            root.setOnClickListener(null);
+            if (contentScroll != null) contentScroll.setOnClickListener(null);
             if ("quiz".equals(screen)) showGameOver("Resposta incorreta");
         };
-        quizHandler.postDelayed(quizPendingGameOver, 3000);
+        root.setClickable(true);
+        root.setOnClickListener(finishWrong);
+        if (contentScroll != null) {
+            contentScroll.setClickable(true);
+            contentScroll.setOnClickListener(finishWrong);
+        }
     }
 
     private void showQuizResult() {
@@ -1539,7 +1568,7 @@ public class MainActivity extends Activity {
                 for (int i = 0; i < categorias.length(); i++) {
                     JSONObject categoria = categorias.optJSONObject(i);
                     if (categoria == null) continue;
-                    int categoriaId = db.addCategoria(cadernoId, jsonText(categoria, "nome", "Grupo importado"), jsonText(categoria, "descricao"));
+                    int categoriaId = db.addCategoria(cadernoId, jsonText(categoria, "nome", "Tipo importado"), jsonText(categoria, "descricao"));
                     JSONArray receitas = categoria.optJSONArray("receitas");
                     if (receitas == null) continue;
                     for (int r = 0; r < receitas.length(); r++) {
@@ -1701,11 +1730,11 @@ public class MainActivity extends Activity {
 
     private void newCategoria() {
         LinearLayout box = themedDialogBox();
-        EditText nome = entry("Nome do grupo", "");
+        EditText nome = entry("Nome do tipo de receitas", "");
         EditText desc = entry("Descricao curta", "");
         box.addView(nome);
         box.addView(desc);
-        showThemed(themedDialog("Novo grupo", box)
+        showThemed(themedDialog("Novo tipo de receitas", box)
             .setNegativeButton("Cancelar", null)
             .setPositiveButton("Salvar", (d, w) -> {
                 if (blank(nome)) return;
@@ -1742,7 +1771,7 @@ public class MainActivity extends Activity {
     private void menuCategoria(Item item) {
         actions(item.name, new String[]{"Editar", "Excluir"}, which -> {
             if (which == 0) editCategoria(item);
-            if (which == 1) confirmDelete("categorias", item, "grupo", "Excluir este grupo e suas receitas?", () -> { db.deleteCategoria(item.id); renderCategorias(); });
+            if (which == 1) confirmDelete("categorias", item, "tipo", "Excluir este tipo e suas receitas?", () -> { db.deleteCategoria(item.id); renderCategorias(); });
         });
     }
 
@@ -1779,7 +1808,7 @@ public class MainActivity extends Activity {
     }
 
     private void editCategoria(Item item) {
-        editTwo("Editar grupo", "Nome", item.name, "Descricao", item.desc, (a, b) -> {
+        editTwo("Editar tipo de receitas", "Nome", item.name, "Descricao", item.desc, (a, b) -> {
             db.saveCategoria(item.id, currentCadernoId, a, b);
             renderCategorias();
         });
@@ -2383,9 +2412,19 @@ public class MainActivity extends Activity {
             public void onTextChanged(CharSequence s, int start, int before, int count) {}
             public void afterTextChanged(Editable s) { callback.run(); }
         });
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, dp(56));
-        params.setMargins(0, 0, 0, dp(12));
-        root.addView(search, params);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, dp(56));
+        rowParams.setMargins(0, 0, 0, dp(12));
+        row.addView(search, new LinearLayout.LayoutParams(0, -1, 1));
+        ImageButton sort = imageIconButton(R.drawable.ic_sort, RED_DARK, Color.WHITE);
+        sort.setContentDescription("Ordenar");
+        sort.setOnClickListener(v -> showSortOptions(callback));
+        LinearLayout.LayoutParams sortParams = new LinearLayout.LayoutParams(dp(54), dp(54));
+        sortParams.setMargins(dp(8), 0, 0, 0);
+        row.addView(sort, sortParams);
+        root.addView(row, rowParams);
     }
 
     private EditText searchEntry(String hint) {
@@ -2396,6 +2435,64 @@ public class MainActivity extends Activity {
         e.setCompoundDrawablePadding(dp(10));
         e.setBackground(round(CARD_STRONG, dp(18), LINE, 1));
         return e;
+    }
+
+    private void showSortOptions(Runnable refresh) {
+        String[] options = sortOptionsForScreen();
+        showThemed(themedDialog("Ordenar", null)
+                .setItems(options, (d, which) -> {
+                    sortModes.put(screen, which);
+                    refresh.run();
+                }));
+    }
+
+    private String[] sortOptionsForScreen() {
+        if ("home".equals(screen)) return new String[]{"Nome A-Z", "Nome Z-A", "Mais receitas", "Menos receitas"};
+        if ("caderno".equals(screen)) return new String[]{"Tipo A-Z", "Tipo Z-A", "Mais receitas", "Menos receitas"};
+        if ("categoria".equals(screen)) return new String[]{"Receita A-Z", "Receita Z-A", "Mais ingredientes", "Menos ingredientes"};
+        if ("receita".equals(screen)) return new String[]{"Ingrediente A-Z", "Ingrediente Z-A", "Categoria A-Z", "Quantidade"};
+        if ("ingredientes_caderno".equals(screen)) return new String[]{"Ingrediente A-Z", "Ingrediente Z-A", "Mais usado", "Categoria A-Z"};
+        if ("ingrediente_usos".equals(screen)) return new String[]{"Receita A-Z", "Receita Z-A", "Mais ingredientes", "Menos ingredientes"};
+        return new String[]{"Nome A-Z", "Nome Z-A"};
+    }
+
+    private void sortItems(List<Item> items) {
+        int mode = sortModes.containsKey(screen) ? sortModes.get(screen) : 0;
+        Collections.sort(items, (a, b) -> compareItems(a, b, mode));
+    }
+
+    private int compareItems(Item a, Item b, int mode) {
+        if ("home".equals(screen)) {
+            if (mode == 2 || mode == 3) return countCompare(db.countReceitasCaderno(a.id), db.countReceitasCaderno(b.id), mode == 2);
+        } else if ("caderno".equals(screen)) {
+            if (mode == 2 || mode == 3) return countCompare(db.countReceitasCategoria(a.id), db.countReceitasCategoria(b.id), mode == 2);
+        } else if ("categoria".equals(screen) || "ingrediente_usos".equals(screen)) {
+            if (mode == 2 || mode == 3) {
+                int recipeA = "ingrediente_usos".equals(screen) ? a.parentId : a.id;
+                int recipeB = "ingrediente_usos".equals(screen) ? b.parentId : b.id;
+                return countCompare(db.countIngredientes(recipeA), db.countIngredientes(recipeB), mode == 2);
+            }
+        } else if ("receita".equals(screen)) {
+            if (mode == 2) return norm(a.extra).compareTo(norm(b.extra));
+            if (mode == 3) return norm(a.desc).compareTo(norm(b.desc));
+        } else if ("ingredientes_caderno".equals(screen)) {
+            if (mode == 2) return numberFromText(b.desc) - numberFromText(a.desc);
+            if (mode == 3) return norm(a.extra).compareTo(norm(b.extra));
+        }
+        int value = norm(a.name).compareTo(norm(b.name));
+        return mode == 1 ? -value : value;
+    }
+
+    private int countCompare(int a, int b, boolean desc) {
+        int value = Integer.compare(a, b);
+        if (value == 0) return 0;
+        return desc ? -value : value;
+    }
+
+    private int numberFromText(String value) {
+        String digits = value == null ? "" : value.replaceAll("[^0-9]", "");
+        if (digits.isEmpty()) return 0;
+        try { return Integer.parseInt(digits); } catch (Exception e) { return 0; }
     }
 
     private LinearLayout.LayoutParams weight() {
