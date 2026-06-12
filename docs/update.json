@@ -1,12 +1,12 @@
 {
-    "versionCode":  17,
-    "versionName":  "0.17.0-java",
+    "versionCode":  18,
+    "versionName":  "0.18.0-java",
     "critical":  false,
     "pageUrl":  "https://mbzerker.github.io/CadernoReceitas/",
-    "apkUrl":  "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.17.0-java.apk",
-    "sha256":  "9B43997FB3246856131DE02E82F1782778A9A2FD31B1C46ED39504CE6131D52B",
-    "sizeBytes":  22734151,
+    "apkUrl":  "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.18.0-java.apk",
+    "sha256":  "BB945FA3D0BFCF8563A2F423628D42D2217127BC1F229B986B225DCE2A5B830C",
+    "sizeBytes":  22735803,
     "signatureSha256":  "f8dec9a06ec4eaf93a1a9b7f5b5cf73490d54d227f0ee172f83177557c79bfe8",
     "origin":  "GitHub Pages oficial do Caderno de Receitas",
-    "changelog":  "Melhorias no teste: denuncias agora ficam acumuladas em arquivo local e podem ser exportadas juntas por toque longo, iniciar e reiniciar teste mostram loading, erro mostra seta de prosseguir, e o tempo extra ganhou animacao de circulo clonado em fade."
+    "changelog":  "Correcoes nas denuncias do teste: exportacao por toque longo agora copia o arquivo acumulado para area compartilhavel antes de enviar, evitando fechamento do app, e o relatorio ganhou diagnostico compacto comparando alternativas com ingredientes das receitas citadas."
 }

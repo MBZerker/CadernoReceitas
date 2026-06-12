@@ -1089,12 +1089,18 @@ public class MainActivity extends Activity {
     }
 
     private void exportQuizBugReports() {
-        File file = quizBugLogFile();
-        if (!file.exists() || file.length() == 0) {
-            toast("Nenhuma denúncia salva ainda.");
-            return;
+        try {
+            File file = quizBugLogFile();
+            if (!file.exists() || file.length() == 0) {
+                toast("Nenhuma denúncia salva ainda.");
+                return;
+            }
+            File out = new File(exportDir(), "denuncias-teste.txt");
+            copyFile(file, out);
+            shareFile("Exportar denúncias do teste", out, "text/plain", "Denúncias do teste - Caderno de Receitas");
+        } catch (Exception e) {
+            toast("Não foi possível exportar as denúncias.");
         }
-        shareFile("Exportar denúncias do teste", file, "text/plain", "Denúncias do teste - Caderno de Receitas");
     }
 
     private File quizBugLogFile() {
@@ -1116,6 +1122,88 @@ public class MainActivity extends Activity {
             if (i == question.correctIndex) out.append(" [C]");
             if (i == quizLastChoice) out.append(" [M]");
             out.append("\n");
+        }
+        out.append(buildQuizBugDiagnostics(question));
+        return out.toString();
+    }
+
+    private String buildQuizBugDiagnostics(QuizQuestion question) {
+        StringBuilder out = new StringBuilder();
+        ArrayList<String> refs = quotedValues(question.prompt);
+        if (refs.isEmpty()) return "diag: sem referencias entre aspas\n";
+        String[] letters = {"A", "B", "C", "D"};
+        boolean foundRecipe = false;
+        for (String ref : refs) {
+            int recipeId = db.findRecipeByNameInCaderno(ref, currentCadernoId);
+            if (recipeId <= 0) continue;
+            foundRecipe = true;
+            Item recipe = db.getReceita(recipeId);
+            List<Item> ingredients = db.ingredientes(recipe.id, "");
+            out.append("diag receita: ").append(recipe.name).append(" #").append(recipe.id).append("\n");
+            out.append("ingredientes: ").append(compactIngredientNames(ingredients)).append("\n");
+            for (int i = 0; i < question.options.size(); i++) {
+                ArrayList<String> parts = optionParts(question.options.get(i));
+                int hits = 0;
+                for (String part : parts) if (ingredientExistsIn(ingredients, part)) hits++;
+                out.append("diag ").append(letters[i]).append(": ").append(hits).append('/').append(parts.size()).append(" itens na receita");
+                if (i == quizLastChoice && i != question.correctIndex && hits > 0) out.append(" <- marcada errada mas bate");
+                out.append("\n");
+            }
+        }
+        if (!foundRecipe) out.append("diag: nenhuma referencia entre aspas bateu com receita do caderno\n");
+        return out.toString();
+    }
+
+    private ArrayList<String> quotedValues(String value) {
+        ArrayList<String> out = new ArrayList<>();
+        if (value == null) return out;
+        int start = -1;
+        for (int i = 0; i < value.length(); i++) {
+            if (value.charAt(i) == '"') {
+                if (start < 0) start = i + 1;
+                else {
+                    String part = value.substring(start, i).trim();
+                    if (!part.isEmpty()) out.add(part);
+                    start = -1;
+                }
+            }
+        }
+        return out;
+    }
+
+    private ArrayList<String> optionParts(String value) {
+        ArrayList<String> out = new ArrayList<>();
+        if (value == null) return out;
+        String clean = value;
+        int dot = clean.indexOf('.');
+        if (dot >= 0 && dot < 3) clean = clean.substring(dot + 1);
+        for (String part : clean.split("\\+")) {
+            String item = part.trim();
+            int dash = item.indexOf(" - ");
+            if (dash > 0) item = item.substring(0, dash).trim();
+            if (!item.isEmpty()) out.add(item);
+        }
+        if (out.isEmpty() && !clean.trim().isEmpty()) out.add(clean.trim());
+        return out;
+    }
+
+    private boolean ingredientExistsIn(List<Item> ingredients, String name) {
+        String wanted = norm(name);
+        for (Item item : ingredients) if (norm(item.name).equals(wanted)) return true;
+        return false;
+    }
+
+    private String compactIngredientNames(List<Item> ingredients) {
+        StringBuilder out = new StringBuilder();
+        int count = 0;
+        for (Item item : ingredients) {
+            if (count > 0) out.append(", ");
+            out.append(item.name);
+            count++;
+            if (count >= 12 && ingredients.size() > count) {
+                out.append(", +").append(ingredients.size() - count);
+                break;
+            }
         }
         return out.toString();
     }
@@ -1446,6 +1534,13 @@ public class MainActivity extends Activity {
         return clean.isEmpty() ? "receita" : clean;
     }
 
+    private void copyFile(File from, File to) throws IOException {
+        try (InputStream in = new FileInputStream(from); OutputStream out = new FileOutputStream(to)) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = in.read(buffer)) != -1) out.write(buffer, 0, read);
+        }
+    }
     private void shareFile(String chooserTitle, File file, String mime, String subject) {
         Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
         Intent send = new Intent(Intent.ACTION_SEND);
