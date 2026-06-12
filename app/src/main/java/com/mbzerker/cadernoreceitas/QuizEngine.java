@@ -191,7 +191,7 @@ final class QuizEngine {
         if (recipe == null) return null;
         IngredientData intruder = outsiderIngredient(c, recipe, null, r);
         if (intruder == null) return null;
-        return question(id, level, "Qual ingrediente nao pertence a \"" + recipe.name + "\"?", intruder.name, ingredientNames(recipe.ingredients, intruder.name, 3), ingredientNotBelongsRule(recipe));
+        return question(id, level, "Qual ingrediente não pertence a \"" + recipe.name + "\"?", intruder.name, ingredientNames(recipe.ingredients, intruder.name, 3), ingredientNotBelongsRule(recipe));
     }
 
     private static Question quantityForIngredient(ContextData c, int id, int level, Random r) {
@@ -255,25 +255,26 @@ final class QuizEngine {
         RecipeData recipe = recipeWithIngredients(c, 1, r);
         if (recipe == null) return null;
         int count = recipe.ingredients.size();
-        return question(id, level, "Quantos ingredientes estao cadastrados em \"" + recipe.name + "\"?", countLabel(count), numberDistractors(count, 3));
+        return question(id, level, "Quantos ingredientes estão cadastrados em \"" + recipe.name + "\"?", countLabel(count), numberDistractors(count, 3));
     }
 
     private static Question linkedIngredient(ContextData c, int id, int level, Random r) {
         IngredientPick pick = pickIngredient(c, i -> i.isLinked(), r);
         if (pick == null) return null;
-        return question(id, level, "Qual ingrediente de \"" + pick.recipe.name + "\" tambem e uma receita preparada?", pick.ingredient.name, ingredientDistractors(c, pick.recipe, pick.ingredient, 3), linkedIngredientRule(pick.recipe));
+        return question(id, level, "Qual ingrediente de \"" + pick.recipe.name + "\" também é uma receita preparada?", pick.ingredient.name, ingredientDistractors(c, pick.recipe, pick.ingredient, 3), linkedIngredientRule(pick.recipe));
     }
 
     private static Question linkedRecipeTarget(ContextData c, int id, int level, Random r) {
         IngredientPick pick = pickIngredient(c, i -> i.isLinked() && !i.linkedRecipeName.isEmpty(), r);
         if (pick == null) return null;
-        return question(id, level, "O ingrediente \"" + pick.ingredient.name + "\" aponta para qual receita preparada?", pick.ingredient.linkedRecipeName, recipeDistractors(c, pick.ingredient.linkedRecipeName, 3));
+        if (norm(pick.ingredient.name).equals(norm(pick.ingredient.linkedRecipeName))) return null;
+        return question(id, level, "O ingrediente \"" + pick.ingredient.name + "\" aponta para qual receita preparada?", pick.ingredient.linkedRecipeName, linkedRecipeTargetDistractors(c, pick.ingredient, 3), option -> norm(optionName(option)).equals(norm(pick.ingredient.linkedRecipeName)));
     }
 
     private static Question rawIngredient(ContextData c, int id, int level, Random r) {
         IngredientPick pick = pickIngredient(c, i -> !i.isLinked(), r);
         if (pick == null) return null;
-        return question(id, level, "Qual item de \"" + pick.recipe.name + "\" e ingrediente comum, sem receita vinculada?", pick.ingredient.name, ingredientDistractors(c, pick.recipe, pick.ingredient, 3), rawIngredientRule(pick.recipe));
+        return question(id, level, "Qual item de \"" + pick.recipe.name + "\" é ingrediente comum, sem receita vinculada?", pick.ingredient.name, ingredientDistractors(c, pick.recipe, pick.ingredient, 3), rawIngredientRule(pick.recipe));
     }
 
     private static Question baseIngredient(ContextData c, int id, int level, Random r) {
@@ -291,7 +292,7 @@ final class QuizEngine {
     private static Question complementaryIngredient(ContextData c, int id, int level, Random r) {
         IngredientPick pick = pickIngredient(c, i -> i.hasCategory() && !hasCategoryWord(i, "base") && !hasCategoryWord(i, "principal"), r);
         if (pick == null) return null;
-        return question(id, level, "Qual ingrediente complementar tambem faz parte de \"" + pick.recipe.name + "\"?", pick.ingredient.name, ingredientDistractors(c, pick.recipe, pick.ingredient, 3), option -> {
+        return question(id, level, "Qual ingrediente complementar também faz parte de \"" + pick.recipe.name + "\"?", pick.ingredient.name, ingredientDistractors(c, pick.recipe, pick.ingredient, 3), option -> {
             String name = optionName(option);
             for (IngredientData item : pick.recipe.ingredients) {
                 if (norm(item.name).equals(norm(name)) && item.hasCategory() && !hasCategoryWord(item, "base") && !hasCategoryWord(item, "principal")) return true;
@@ -304,7 +305,7 @@ final class QuizEngine {
         RecipeData recipe = recipeWithIngredients(c, 2, r);
         if (recipe == null) return null;
         String correct = pairNames(twoIngredients(recipe, r));
-        return question(id, level, "Qual dupla de ingredientes pertence a \"" + recipe.name + "\"?", correct, pairDistractors(c, recipe, correct, 3));
+        return question(id, level, "Qual dupla de ingredientes pertence a \"" + recipe.name + "\"?", correct, invalidPairDistractors(c, recipe, correct, 3), pairAllInRecipeRule(recipe));
     }
 
     private static Question mixedPairIntruder(ContextData c, int id, int level, Random r) {
@@ -314,7 +315,7 @@ final class QuizEngine {
         if (outsider == null) return null;
         IngredientData inside = any(recipe.ingredients, r);
         String correct = inside.name + " + " + outsider.name;
-        return question(id, level, "Qual dupla tem um ingrediente correto de \"" + recipe.name + "\" e um intruso?", correct, pairDistractors(c, recipe, correct, 3));
+        return question(id, level, "Qual dupla tem um ingrediente correto de \"" + recipe.name + "\" e outro que é intruso?", correct, pairDistractors(c, recipe, correct, 3), pairOneInRecipeRule(recipe));
     }
 
     private static Question fullQuantityUnitCombo(ContextData c, int id, int level, Random r) {
@@ -327,14 +328,14 @@ final class QuizEngine {
         RecipePair pair = pairWithDifference(c, r);
         if (pair == null || pair.onlyA.isEmpty()) return null;
         IngredientData correct = any(pair.onlyA, r);
-        return question(id, level, "Qual ingrediente aparece em \"" + pair.a.name + "\", mas nao em \"" + pair.b.name + "\"?", correct.name, namesFrom(pair.onlyB, c.allIngredientNames, correct.name, 3));
+        return question(id, level, "Qual ingrediente aparece em \"" + pair.a.name + "\", mas não em \"" + pair.b.name + "\"?", correct.name, namesFrom(pair.onlyB, c.allIngredientNames, correct.name, 3));
     }
 
     private static Question ingredientOnlyInSecond(ContextData c, int id, int level, Random r) {
         RecipePair pair = pairWithDifference(c, r);
         if (pair == null || pair.onlyB.isEmpty()) return null;
         IngredientData correct = any(pair.onlyB, r);
-        return question(id, level, "Qual ingrediente aparece em \"" + pair.b.name + "\", mas nao em \"" + pair.a.name + "\"?", correct.name, namesFrom(pair.onlyA, c.allIngredientNames, correct.name, 3));
+        return question(id, level, "Qual ingrediente aparece em \"" + pair.b.name + "\", mas não em \"" + pair.a.name + "\"?", correct.name, namesFrom(pair.onlyA, c.allIngredientNames, correct.name, 3));
     }
 
     private static Question commonIngredient(ContextData c, int id, int level, Random r) {
@@ -352,11 +353,11 @@ final class QuizEngine {
     }
 
     private static Question recipeWithMoreIngredients(ContextData c, int id, int level, Random r) {
-        return recipeByCount(c, id, level, r, true, "Qual receita tem mais ingredientes cadastrados entre estas opcoes?");
+        return recipeByCount(c, id, level, r, true, "Qual receita tem mais ingredientes cadastrados entre estas opções?");
     }
 
     private static Question recipeWithFewerIngredients(ContextData c, int id, int level, Random r) {
-        return recipeByCount(c, id, level, r, false, "Qual receita tem menos ingredientes cadastrados entre estas opcoes?");
+        return recipeByCount(c, id, level, r, false, "Qual receita tem menos ingredientes cadastrados entre estas opções?");
     }
 
     private static Question recipeWithSameIngredientCount(ContextData c, int id, int level, Random r) {
@@ -418,13 +419,13 @@ final class QuizEngine {
         if (pair == null) return null;
         IngredientData ingredient = any(pair.a.ingredients, r);
         String correct = pair.a.name + " + " + pair.b.name;
-        return question(id, level, "Qual par de receitas nao compartilha \"" + ingredient.name + "\"?", correct, recipePairDistractors(c, correct, 3));
+        return question(id, level, "Qual par de receitas não compartilha \"" + ingredient.name + "\"?", correct, recipePairDistractors(c, correct, 3));
     }
 
     private static Question recipeContainsLinkedRecipe(ContextData c, int id, int level, Random r) {
         IngredientPick pick = pickIngredient(c, i -> i.isLinked() && !i.linkedRecipeName.isEmpty(), r);
         if (pick == null) return null;
-        return question(id, level, "Qual receita contem a receita preparada \"" + pick.ingredient.linkedRecipeName + "\"?", pick.recipe.name, recipeDistractors(c, pick.recipe.name, 3));
+        return question(id, level, "Qual receita contém a receita preparada \"" + pick.ingredient.linkedRecipeName + "\"?", pick.recipe.name, recipeDistractors(c, pick.recipe.name, 3));
     }
 
     private static Question recipeDoesNotContainLinkedRecipe(ContextData c, int id, int level, Random r) {
@@ -437,7 +438,7 @@ final class QuizEngine {
         ArrayList<String> notContaining = without(c.recipeNames, containing);
         String correct = any(notContaining, r);
         if (correct == null) return null;
-        return question(id, level, "Qual receita nao contem a receita preparada \"" + pick.ingredient.linkedRecipeName + "\"?", correct, containing);
+        return question(id, level, "Qual receita não contém a receita preparada \"" + pick.ingredient.linkedRecipeName + "\"?", correct, containing);
     }
 
     private static Question ingredientInAllRecipes(ContextData c, int id, int level, Random r) {
@@ -478,7 +479,7 @@ final class QuizEngine {
     }
 
     private static Question simplestRecipe(ContextData c, int id, int level, Random r) {
-        return recipeByCount(c, id, level, r, false, "Qual receita e mais simples considerando a quantidade de ingredientes?");
+        return recipeByCount(c, id, level, r, false, "Qual receita é mais simples considerando a quantidade de ingredientes?");
     }
 
     private static Question recipeWithTwoWithoutThird(ContextData c, int id, int level, Random r) {
@@ -487,7 +488,7 @@ final class QuizEngine {
         IngredientData outside = outsiderIngredient(c, recipe, null, r);
         if (outside == null) return null;
         List<IngredientData> pair = twoIngredients(recipe, r);
-        return question(id, level, "Qual receita contem \"" + pair.get(0).name + "\" + \"" + pair.get(1).name + "\", mas nao contem \"" + outside.name + "\"?", recipe.name, recipeDistractors(c, recipe.name, 3));
+        return question(id, level, "Qual receita contém \"" + pair.get(0).name + "\" + \"" + pair.get(1).name + "\", mas não contém \"" + outside.name + "\"?", recipe.name, recipeDistractors(c, recipe.name, 3));
     }
 
     private static Question prepSnippetBelongs(ContextData c, int id, int level, Random r) {
@@ -530,7 +531,7 @@ final class QuizEngine {
     private static Question ingredientInPrepStep(ContextData c, int id, int level, Random r) {
         PrepIngredient prep = prepIngredient(c, r);
         if (prep == null) return null;
-        return question(id, level, "Qual ingrediente e usado nesta etapa de \"" + prep.recipe.name + "\": \"" + shortText(prep.step) + "\"?", prep.ingredient.name, ingredientDistractors(c, prep.recipe, prep.ingredient, 3), option -> norm(prep.step).contains(norm(optionName(option))));
+        return question(id, level, "Qual ingrediente é usado nesta etapa de \"" + prep.recipe.name + "\": \"" + shortText(prep.step) + "\"?", prep.ingredient.name, ingredientDistractors(c, prep.recipe, prep.ingredient, 3), option -> norm(prep.step).contains(norm(optionName(option))));
     }
 
     private static Question stepAfterIngredient(ContextData c, int id, int level, Random r) {
@@ -546,7 +547,7 @@ final class QuizEngine {
         RecipeData recipe = recipeWithSteps(c, 3, r);
         if (recipe == null) return null;
         String correct = recipe.steps.get(recipe.steps.size() - 2);
-        return question(id, level, "Antes da etapa final de \"" + recipe.name + "\", qual acao acontece?", correct, stepDistractors(c, recipe, correct, 3));
+        return question(id, level, "Antes da etapa final de \"" + recipe.name + "\", qual ação acontece?", correct, stepDistractors(c, recipe, correct, 3));
     }
 
     private static Question ingredientsTogetherInStep(ContextData c, int id, int level, Random r) {
@@ -581,7 +582,7 @@ final class QuizEngine {
         if (recipe == null) return null;
         String correct = stepFromOtherRecipe(c, recipe, r);
         if (correct == null) return null;
-        return question(id, level, "Qual etapa nao pertence ao preparo de \"" + recipe.name + "\"?", correct, stepOptions(recipe.steps, correct, 3));
+        return question(id, level, "Qual etapa não pertence ao preparo de \"" + recipe.name + "\"?", correct, stepOptions(recipe.steps, correct, 3));
     }
 
     private static Question ingredientInSheetAndPrep(ContextData c, int id, int level, Random r) {
@@ -599,7 +600,7 @@ final class QuizEngine {
             }
             if (!quiet.isEmpty()) {
                 IngredientData correct = any(quiet, r);
-                return question(id, level, "Qual ingrediente esta cadastrado em \"" + recipe.name + "\", mas nao aparece literalmente no preparo?", correct.name, ingredientDistractors(c, recipe, correct, 3), option -> recipeHasIngredient(recipe, optionName(option)) && !norm(recipe.prep).contains(norm(optionName(option))));
+                return question(id, level, "Qual ingrediente está cadastrado em \"" + recipe.name + "\", mas não aparece literalmente no preparo?", correct.name, ingredientDistractors(c, recipe, correct, 3), option -> recipeHasIngredient(recipe, optionName(option)) && !norm(recipe.prep).contains(norm(optionName(option))));
             }
         }
         return null;
@@ -652,7 +653,7 @@ final class QuizEngine {
         }
         for (Integer recipeId : counts.keySet()) {
             if (counts.get(recipeId) > 1) {
-                return question(id, level, "Qual receita preparada e usada como ingrediente em mais de uma receita?", names.get(recipeId), recipeDistractors(c, names.get(recipeId), 3));
+                return question(id, level, "Qual receita preparada é usada como ingrediente em mais de uma receita?", names.get(recipeId), recipeDistractors(c, names.get(recipeId), 3));
             }
         }
         return null;
@@ -679,7 +680,7 @@ final class QuizEngine {
     private static Question linkedIngredientNotRaw(ContextData c, int id, int level, Random r) {
         IngredientPick pick = pickIngredient(c, IngredientData::isLinked, r);
         if (pick == null) return null;
-        return question(id, level, "Qual ingrediente nao e materia-prima simples, mas sim uma receita preparada?", pick.ingredient.name, ingredientDistractors(c, pick.recipe, pick.ingredient, 3), linkedIngredientRule(pick.recipe));
+        return question(id, level, "Qual ingrediente não é matéria-prima simples, mas sim uma receita preparada?", pick.ingredient.name, ingredientDistractors(c, pick.recipe, pick.ingredient, 3), linkedIngredientRule(pick.recipe));
     }
 
     private static Question linkedAndRawCombo(ContextData c, int id, int level, Random r) {
@@ -703,7 +704,7 @@ final class QuizEngine {
     private static Question categoryWithLinkedIngredient(ContextData c, int id, int level, Random r) {
         IngredientPick pick = pickIngredient(c, i -> i.isLinked() && i.hasCategory(), r);
         if (pick == null) return null;
-        return question(id, level, "Qual categoria contem um ingrediente que tambem e uma receita em \"" + pick.recipe.name + "\"?", pick.ingredient.category, categoryDistractors(c, pick.ingredient.category, 3));
+        return question(id, level, "Qual categoria contém um ingrediente que também é uma receita em \"" + pick.recipe.name + "\"?", pick.ingredient.category, categoryDistractors(c, pick.ingredient.category, 3));
     }
 
     private static Question fullLinkedCombo(ContextData c, int id, int level, Random r) {
@@ -717,7 +718,7 @@ final class QuizEngine {
         for (RecipeData recipe : shuffled(c.recipes, r)) {
             IngredientData categoryItem = any(items(recipe, IngredientData::hasCategory), r);
             if (categoryItem != null && !items(recipe, IngredientData::isLinked).isEmpty()) {
-                return question(id, level, "Qual receita contem um ingrediente da categoria \"" + categoryItem.category + "\" e tambem uma receita vinculada?", recipe.name, recipeDistractors(c, recipe.name, 3));
+                return question(id, level, "Qual receita contém um ingrediente da categoria \"" + categoryItem.category + "\" e também uma receita vinculada?", recipe.name, recipeDistractors(c, recipe.name, 3));
             }
         }
         return null;
@@ -727,13 +728,13 @@ final class QuizEngine {
         IngredientPick pick = pickIngredient(c, i -> i.hasCategory() && (i.hasQuantity() || i.hasMeasuredUnit() || i.isAGosto()), r);
         if (pick == null) return null;
         String feature = pick.ingredient.isAGosto() ? "a gosto" : (pick.ingredient.hasMeasuredUnit() ? pick.ingredient.unit() : pick.ingredient.quantity);
-        return question(id, level, "Qual ingrediente pertence a categoria \"" + pick.ingredient.category + "\" e tambem esta marcado como \"" + feature + "\"?", pick.ingredient.name, ingredientDistractors(c, pick.recipe, pick.ingredient, 3));
+        return question(id, level, "Qual ingrediente pertence a categoria \"" + pick.ingredient.category + "\" e também está marcado como \"" + feature + "\"?", pick.ingredient.name, ingredientDistractors(c, pick.recipe, pick.ingredient, 3));
     }
 
     private static Question recipeWithGramAndLiter(ContextData c, int id, int level, Random r) {
         for (RecipeData recipe : shuffled(c.recipes, r)) {
             if (recipeHasUnit(recipe, "g") && recipeHasUnit(recipe, "L")) {
-                return question(id, level, "Qual receita contem ingredientes medidos em gramas e tambem em litro?", recipe.name, recipeDistractors(c, recipe.name, 3));
+                return question(id, level, "Qual receita contém ingredientes medidos em gramas e também em litro?", recipe.name, recipeDistractors(c, recipe.name, 3));
             }
         }
         return null;
@@ -742,14 +743,14 @@ final class QuizEngine {
     private static Question ingredientByUnit(ContextData c, int id, int level, Random r, String unit) {
         IngredientPick pick = pickIngredient(c, i -> norm(i.unit()).equals(norm(unit)), r);
         if (pick == null) return null;
-        return question(id, level, "Qual ingrediente esta medido em \"" + unit + "\"?", pick.ingredient.name, ingredientNameDistractors(c, pick.ingredient.name, 3));
+        return question(id, level, "Qual ingrediente está medido em \"" + unit + "\"?", pick.ingredient.name, ingredientNameDistractors(c, pick.ingredient.name, 3));
     }
 
     private static Question ingredientCategoryUnitCombo(ContextData c, int id, int level, Random r) {
         IngredientPick pick = pickIngredient(c, i -> i.hasCategory() && i.hasMeasuredUnit(), r);
         if (pick == null) return null;
         String correct = pick.ingredient.name + " - " + pick.ingredient.category + " - " + pick.ingredient.unit();
-        return question(id, level, "Qual alternativa contem ingrediente + categoria + unidade corretamente em \"" + pick.recipe.name + "\"?", correct, comboDistractors(correct, ingredientCategoryUnitOptions(c, pick.recipe), 3));
+        return question(id, level, "Qual alternativa contém ingrediente + categoria + unidade corretamente em \"" + pick.recipe.name + "\"?", correct, comboDistractors(correct, ingredientCategoryUnitOptions(c, pick.recipe), 3));
     }
 
     private static Question wrongCategoryForIngredient(ContextData c, int id, int level, Random r) {
@@ -765,7 +766,7 @@ final class QuizEngine {
         for (String ingredient : shuffled(c.allIngredientNames, r)) {
             int count = 0;
             for (RecipeData recipe : c.recipes) if (recipeHasIngredient(recipe, ingredient)) count++;
-            if (count > 1) return question(id, level, "Qual ingrediente e compartilhado por mais de uma receita?", ingredient, ingredientNameDistractors(c, ingredient, 3), sharedIngredientRule(c));
+            if (count > 1) return question(id, level, "Qual ingrediente é compartilhado por mais de uma receita?", ingredient, ingredientNameDistractors(c, ingredient, 3), sharedIngredientRule(c));
         }
         return null;
     }
@@ -825,7 +826,7 @@ final class QuizEngine {
             for (IngredientData a : matches) {
                 for (IngredientData b : matches) {
                     if (a.recipeId != b.recipeId && a.hasQuantity() && b.hasQuantity() && !norm(a.quantity).equals(norm(b.quantity))) {
-                        return question(id, level, "Qual ingrediente aparece em duas receitas, porem com quantidades diferentes?", name, ingredientNameDistractors(c, name, 3));
+                        return question(id, level, "Qual ingrediente aparece em duas receitas, porém com quantidades diferentes?", name, ingredientNameDistractors(c, name, 3));
                     }
                 }
             }
@@ -838,14 +839,14 @@ final class QuizEngine {
         if (recipe == null) return null;
         int start = r.nextInt(recipe.steps.size() - 2);
         String correct = sequence(recipe.steps, start, start + 3);
-        return question(id, level, "Qual sequencia entre tres etapas esta realmente correta em \"" + recipe.name + "\"?", correct, sequenceDistractors(recipe, correct, 3, r));
+        return question(id, level, "Qual sequência entre três etapas está realmente correta em \"" + recipe.name + "\"?", correct, sequenceDistractors(recipe, correct, 3, r));
     }
 
     private static Question fullIngredientCategoryUnitCombo(ContextData c, int id, int level, Random r) {
         IngredientPick pick = pickIngredient(c, i -> i.hasQuantity() && i.hasMeasuredUnit() && i.hasCategory(), r);
         if (pick == null) return null;
         String correct = pick.ingredient.name + " - " + pick.ingredient.quantity + " - " + pick.ingredient.unit() + " - " + pick.ingredient.category;
-        return question(id, level, "Qual combinacao completa ingrediente + quantidade + unidade + categoria pertence a \"" + pick.recipe.name + "\"?", correct, comboDistractors(correct, fullComboOptions(c, pick.recipe), 3));
+        return question(id, level, "Qual combinação completa ingrediente + quantidade + unidade + categoria pertence a \"" + pick.recipe.name + "\"?", correct, comboDistractors(correct, fullComboOptions(c, pick.recipe), 3));
     }
 
     private static Question comboWithOneWrongField(ContextData c, int id, int level, Random r) {
@@ -863,7 +864,7 @@ final class QuizEngine {
         ArrayList<String> names = ingredientNames(recipe.ingredients, "", recipe.ingredients.size());
         Collections.shuffle(names, r);
         String correct = names.get(0) + " + " + names.get(1) + " + " + names.get(2);
-        return question(id, level, "Qual alternativa contem somente ingredientes de \"" + recipe.name + "\"?", correct, comboDistractors(correct, recipeTripleDistractors(c, recipe), 3));
+        return question(id, level, "Qual alternativa contém somente ingredientes de \"" + recipe.name + "\"?", correct, comboDistractors(correct, recipeTripleDistractors(c, recipe), 3));
     }
 
     private static Question correctAndOtherRecipeIngredient(ContextData c, int id, int level, Random r) {
@@ -873,7 +874,7 @@ final class QuizEngine {
         if (outside == null) return null;
         IngredientData inside = any(recipe.ingredients, r);
         String correct = inside.name + " + " + outside.name;
-        return question(id, level, "Qual alternativa contem um ingrediente correto de \"" + recipe.name + "\" misturado com um ingrediente de outra receita?", correct, pairDistractors(c, recipe, correct, 3));
+        return question(id, level, "Qual alternativa contém um ingrediente correto de \"" + recipe.name + "\" misturado com um ingrediente de outra receita?", correct, pairDistractors(c, recipe, correct, 3));
     }
 
     private static Question twoSnippetsToTwoRecipes(ContextData c, int id, int level, Random r) {
@@ -1044,6 +1045,61 @@ final class QuizEngine {
         return firstWithout(out, correct, count);
     }
 
+    private static ArrayList<String> linkedRecipeTargetDistractors(ContextData c, IngredientData linkedIngredient, int count) {
+        ArrayList<String> out = new ArrayList<>();
+        for (RecipeData recipe : c.recipes) {
+            if (norm(recipe.name).equals(norm(linkedIngredient.linkedRecipeName))) continue;
+            if (recipeHasIngredient(recipe, linkedIngredient.name)) continue;
+            addUnique(out, recipe.name);
+        }
+        return firstWithout(out, linkedIngredient.linkedRecipeName, count);
+    }
+
+    private static ArrayList<String> invalidPairDistractors(ContextData c, RecipeData recipe, String correct, int count) {
+        ArrayList<String> out = new ArrayList<>();
+        for (RecipeData other : c.recipes) {
+            if (other.ingredients.size() < 2) continue;
+            for (String pair : pairs(other.ingredients)) {
+                if (!pairAllInRecipe(recipe, pair)) addUnique(out, pair);
+            }
+        }
+        for (IngredientData inside : recipe.ingredients) {
+            for (IngredientData outside : c.allIngredients) {
+                if (!recipeHasIngredient(recipe, outside.name)) addUnique(out, inside.name + " + " + outside.name);
+            }
+        }
+        return firstWithout(out, correct, count);
+    }
+
+    private static AnswerRule pairAllInRecipeRule(RecipeData recipe) {
+        return option -> pairAllInRecipe(recipe, option);
+    }
+
+    private static AnswerRule pairOneInRecipeRule(RecipeData recipe) {
+        return option -> {
+            ArrayList<String> parts = pairParts(option);
+            if (parts.size() != 2) return false;
+            int inside = 0;
+            for (String part : parts) if (recipeHasIngredient(recipe, part)) inside++;
+            return inside == 1;
+        };
+    }
+
+    private static boolean pairAllInRecipe(RecipeData recipe, String pair) {
+        ArrayList<String> parts = pairParts(pair);
+        if (parts.size() != 2) return false;
+        return recipeHasIngredient(recipe, parts.get(0)) && recipeHasIngredient(recipe, parts.get(1));
+    }
+
+    private static ArrayList<String> pairParts(String pair) {
+        ArrayList<String> parts = new ArrayList<>();
+        if (pair == null) return parts;
+        for (String part : pair.split("\\+")) {
+            String clean = optionName(part).trim();
+            if (!clean.isEmpty()) parts.add(clean);
+        }
+        return parts;
+    }
     private static ArrayList<String> comboDistractors(String correct, List<String> values, int count) {
         return firstWithout(values, correct, count);
     }
@@ -1800,3 +1856,5 @@ final class QuizEngine {
         return value == null ? "" : value;
     }
 }
+
+

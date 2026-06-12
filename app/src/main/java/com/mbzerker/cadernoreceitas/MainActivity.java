@@ -99,6 +99,7 @@ public class MainActivity extends Activity {
     private int quizBonusSeconds;
     private boolean quizUsingBonus;
     private boolean quizAnswered;
+    private int quizLastChoice = -1;
     private int currentCadernoId;
     private int currentCategoriaId;
     private int currentReceitaId;
@@ -724,10 +725,7 @@ public class MainActivity extends Activity {
         quizOptionViews.clear();
 
         LinearLayout top = card();
-        top.addView(headerInline(quizTitle(), () -> {
-            stopQuizTimer();
-            showCaderno(currentCadernoId);
-        }));
+        top.addView(quizHeader());
         LinearLayout timerRow = new LinearLayout(this);
         timerRow.setGravity(Gravity.CENTER);
         quizTimerView = new TimeCircleView(this);
@@ -757,6 +755,25 @@ public class MainActivity extends Activity {
         startQuizTimer();
     }
 
+
+    private LinearLayout quizHeader() {
+        LinearLayout row = hrow();
+        ImageButton backButton = imageIconButton(R.drawable.ic_back, RED, Color.WHITE);
+        backButton.setContentDescription("Voltar");
+        backButton.setOnClickListener(v -> {
+            stopQuizTimer();
+            showCaderno(currentCadernoId);
+        });
+        row.addView(backButton, new LinearLayout.LayoutParams(dp(56), dp(56)));
+        TextView titleText = label(quizTitle(), 24, RED, true);
+        titleText.setGravity(Gravity.CENTER);
+        row.addView(titleText, new LinearLayout.LayoutParams(0, -2, 1));
+        ImageButton reportButton = imageIconButton(R.drawable.ic_report, RED_DARK, Color.WHITE);
+        reportButton.setContentDescription("Denunciar pergunta");
+        reportButton.setOnClickListener(v -> exportQuizBugReport());
+        row.addView(reportButton, new LinearLayout.LayoutParams(dp(56), dp(56)));
+        return row;
+    }
     private String quizTitle() {
         Item caderno = db.get("cadernos", currentCadernoId);
         if (caderno.name == null || caderno.name.trim().isEmpty()) return "Teste do Caderno";
@@ -768,7 +785,7 @@ public class MainActivity extends Activity {
         grid.setOrientation(LinearLayout.HORIZONTAL);
         grid.setGravity(Gravity.CENTER);
         grid.setPadding(0, dp(8), 0, 0);
-        grid.addView(statChip("Pergunta", (quizIndex + 1) + "/" + quizQuestions.size(), RED_DARK), new LinearLayout.LayoutParams(0, -2, 1));
+        grid.addView(statChip("Perg.", (quizIndex + 1) + "/" + quizQuestions.size(), RED_DARK), new LinearLayout.LayoutParams(0, -2, 1));
         grid.addView(statChip("Pontos", String.valueOf(quizScore), GOLD), new LinearLayout.LayoutParams(0, -2, 1));
         grid.addView(statChip("Nivel", String.valueOf(Math.max(1, question.level)), RED), new LinearLayout.LayoutParams(0, -2, 1));
         grid.addView(statChip("Fase", phaseLabel(question.level), MUTED), new LinearLayout.LayoutParams(0, -2, 1));
@@ -776,9 +793,9 @@ public class MainActivity extends Activity {
     }
 
     private TextView statChip(String labelText, String valueText, int color) {
-        TextView chip = label(labelText + "\n" + valueText, 13, color, true);
+        TextView chip = label(labelText + "\n" + valueText, 12, color, true);
         chip.setGravity(Gravity.CENTER);
-        chip.setPadding(dp(6), dp(7), dp(6), dp(7));
+        chip.setPadding(dp(4), dp(7), dp(4), dp(7));
         chip.setBackground(round(Color.argb(168, 255, 247, 237), dp(14), Color.argb(125, 232, 201, 142), 1));
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -2, 1);
         params.setMargins(dp(3), 0, dp(3), 0);
@@ -790,7 +807,7 @@ public class MainActivity extends Activity {
         if (level <= 1) return "Base";
         if (level == 2) return "Associar";
         if (level == 3) return "Preparo";
-        if (level == 4) return "Avancado";
+        if (level == 4) return "Avançado";
         return "Desafio";
     }
 
@@ -882,6 +899,7 @@ public class MainActivity extends Activity {
     private void startQuizTimer() {
         stopQuizTimer();
         quizAnswered = false;
+        quizLastChoice = -1;
         quizUsingBonus = false;
         quizQuestionStartedAt = System.currentTimeMillis();
         quizBaseDeadline = quizQuestionStartedAt + QUIZ_BASE_TIME_MS;
@@ -927,6 +945,7 @@ public class MainActivity extends Activity {
     private void answerQuiz(int choice) {
         if (quizAnswered) return;
         quizAnswered = true;
+        quizLastChoice = choice;
         stopQuizTimer();
         QuizQuestion question = quizQuestions.get(quizIndex);
         if (choice != question.correctIndex) {
@@ -1013,6 +1032,43 @@ public class MainActivity extends Activity {
         }
     }
 
+
+    private void exportQuizBugReport() {
+        try {
+            if (quizIndex < 0 || quizIndex >= quizQuestions.size()) {
+                toast("Nenhuma pergunta ativa para denunciar.");
+                return;
+            }
+            QuizQuestion question = quizQuestions.get(quizIndex);
+            StringBuilder out = new StringBuilder();
+            out.append("Denúncia de pergunta - Caderno de Receitas\n");
+            out.append("Data: ").append(new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT).format(new Date())).append("\n");
+            Item caderno = db.get("cadernos", currentCadernoId);
+            out.append("Caderno: ").append(caderno.name == null ? "" : caderno.name).append("\n");
+            out.append("Tela: ").append(screen).append("\n");
+            out.append("Pergunta: ").append(quizIndex + 1).append("/").append(quizQuestions.size()).append("\n");
+            out.append("Modelo: ").append(question.modelId).append("\n");
+            out.append("Nivel: ").append(question.level).append("\n");
+            out.append("Pontuação: ").append(quizScore).append("\n");
+            out.append("Prompt original: ").append(question.prompt).append("\n");
+            out.append("Prompt exibido: ").append(highlightQuizText(question.prompt).toString()).append("\n\n");
+            String[] letters = {"A", "B", "C", "D"};
+            for (int i = 0; i < question.options.size(); i++) {
+                out.append(letters[i]).append(") ").append(question.options.get(i));
+                if (i == question.correctIndex) out.append(" [CORRETA]");
+                if (i == quizLastChoice) out.append(" [MARCADA]");
+                out.append("\n");
+            }
+            out.append("\nObservacao: escreva aqui o que ficou incoerente antes de enviar.\n");
+            File file = new File(exportDir(), "denuncia-teste-" + System.currentTimeMillis() + ".txt");
+            FileOutputStream stream = new FileOutputStream(file);
+            stream.write(out.toString().getBytes(StandardCharsets.UTF_8));
+            stream.close();
+            shareFile("Exportar denúncia do teste", file, "text/plain", "Denúncia de pergunta - Caderno de Receitas");
+        } catch (Exception e) {
+            toast("Não foi possível exportar a denúncia.");
+        }
+    }
     private void showQuizResult() {
         stopQuizTimer();
         screen = "quiz_result";
@@ -1021,10 +1077,10 @@ public class MainActivity extends Activity {
         TextView title = label("Resultado", 26, RED, true);
         title.setGravity(Gravity.CENTER);
         result.addView(title);
-        TextView score = label("Pontuacao final: " + quizScore + " pontos", 22, INK, true);
+        TextView score = label("Pontuação final: " + quizScore + " pontos", 22, INK, true);
         score.setGravity(Gravity.CENTER);
         result.addView(score);
-        TextView detail = label("Voce passou pelo teste sem cair nas pegadinhas.", 15, MUTED, false);
+        TextView detail = label("Você passou pelo teste sem cair nas pegadinhas.", 15, MUTED, false);
         detail.setGravity(Gravity.CENTER);
         result.addView(detail);
         LinearLayout row = iconStrip();
