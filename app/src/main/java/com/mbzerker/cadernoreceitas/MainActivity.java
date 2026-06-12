@@ -406,15 +406,19 @@ public class MainActivity extends Activity {
         showThemed(themedDialog("Iniciar teste?", null)
             .setMessage("Deseja fazer o teste deste caderno agora?")
             .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Comecar", (d, w) -> startQuizOrExplain()));
+            .setPositiveButton("Começar", (d, w) -> startQuizOrExplain()));
     }
 
     private void startQuizOrExplain() {
+        showQuizLoading("Preparando teste...", this::startQuizAfterLoading);
+    }
+
+    private void startQuizAfterLoading() {
         quizQuestions.clear();
         quizQuestions.addAll(buildQuizQuestions());
         if (quizQuestions.size() < 5) {
             showThemed(themedDialog("Teste bloqueado", null)
-                .setMessage("Cadastre ingredientes e modo de preparo em mais receitas para gerar perguntas realmente dificeis.")
+                .setMessage("Cadastre ingredientes e modo de preparo em mais receitas para gerar perguntas realmente difíceis.")
                 .setPositiveButton("Entendi", null));
             return;
         }
@@ -422,6 +426,28 @@ public class MainActivity extends Activity {
         quizScore = 0;
         quizBonusSeconds = 0;
         showQuizQuestion();
+    }
+
+    private void showQuizLoading(String message, Runnable next) {
+        stopQuizTimer();
+        screen = "quiz_loading";
+        base(R.drawable.bg_quiz);
+        LinearLayout box = card();
+        box.setGravity(Gravity.CENTER);
+        TextView title = label(message, 22, RED, true);
+        title.setGravity(Gravity.CENTER);
+        box.addView(title);
+        ProgressBar spinner = new ProgressBar(this);
+        spinner.setIndeterminate(true);
+        LinearLayout.LayoutParams spinParams = new LinearLayout.LayoutParams(dp(64), dp(64));
+        spinParams.gravity = Gravity.CENTER_HORIZONTAL;
+        spinParams.setMargins(0, dp(18), 0, dp(8));
+        box.addView(spinner, spinParams);
+        TextView hint = label("Montando perguntas difíceis...", 15, MUTED, false);
+        hint.setGravity(Gravity.CENTER);
+        box.addView(hint);
+        root.addView(box);
+        root.postDelayed(next, 120);
     }
 
     private ArrayList<QuizQuestion> buildQuizQuestions() {
@@ -770,7 +796,8 @@ public class MainActivity extends Activity {
         row.addView(titleText, new LinearLayout.LayoutParams(0, -2, 1));
         ImageButton reportButton = imageIconButton(R.drawable.ic_report, RED_DARK, Color.WHITE);
         reportButton.setContentDescription("Denunciar pergunta");
-        reportButton.setOnClickListener(v -> exportQuizBugReport());
+        reportButton.setOnClickListener(v -> saveQuizBugReport());
+        reportButton.setOnLongClickListener(v -> { exportQuizBugReports(); return true; });
         row.addView(reportButton, new LinearLayout.LayoutParams(dp(56), dp(56)));
         return row;
     }
@@ -1024,6 +1051,22 @@ public class MainActivity extends Activity {
             if (contentScroll != null) contentScroll.setOnClickListener(null);
             if ("quiz".equals(screen)) showGameOver("Resposta incorreta");
         };
+        ImageButton proceed = imageIconButton(R.drawable.ic_arrow_right, RED_DARK, Color.WHITE);
+        proceed.setContentDescription("Prosseguir");
+        proceed.setOnClickListener(finishWrong);
+        LinearLayout.LayoutParams proceedParams = new LinearLayout.LayoutParams(dp(72), dp(58));
+        proceedParams.gravity = Gravity.CENTER_HORIZONTAL;
+        proceedParams.setMargins(0, dp(2), 0, dp(10));
+        root.addView(proceed, proceedParams);
+        proceed.setAlpha(0f);
+        proceed.setTranslationY(dp(12));
+        proceed.animate().alpha(1f).translationY(0).setDuration(320).start();
+        ObjectAnimator arrowPulseX = ObjectAnimator.ofFloat(proceed, "scaleX", 1f, 1.07f, 1f);
+        ObjectAnimator arrowPulseY = ObjectAnimator.ofFloat(proceed, "scaleY", 1f, 1.07f, 1f);
+        AnimatorSet arrowPulse = new AnimatorSet();
+        arrowPulse.playTogether(arrowPulseX, arrowPulseY);
+        arrowPulse.setDuration(900);
+        arrowPulse.start();
         root.setClickable(true);
         root.setOnClickListener(finishWrong);
         if (contentScroll != null) {
@@ -1033,41 +1076,48 @@ public class MainActivity extends Activity {
     }
 
 
-    private void exportQuizBugReport() {
+    private void saveQuizBugReport() {
         try {
-            if (quizIndex < 0 || quizIndex >= quizQuestions.size()) {
-                toast("Nenhuma pergunta ativa para denunciar.");
-                return;
-            }
-            QuizQuestion question = quizQuestions.get(quizIndex);
-            StringBuilder out = new StringBuilder();
-            out.append("Denúncia de pergunta - Caderno de Receitas\n");
-            out.append("Data: ").append(new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT).format(new Date())).append("\n");
-            Item caderno = db.get("cadernos", currentCadernoId);
-            out.append("Caderno: ").append(caderno.name == null ? "" : caderno.name).append("\n");
-            out.append("Tela: ").append(screen).append("\n");
-            out.append("Pergunta: ").append(quizIndex + 1).append("/").append(quizQuestions.size()).append("\n");
-            out.append("Modelo: ").append(question.modelId).append("\n");
-            out.append("Nivel: ").append(question.level).append("\n");
-            out.append("Pontuação: ").append(quizScore).append("\n");
-            out.append("Prompt original: ").append(question.prompt).append("\n");
-            out.append("Prompt exibido: ").append(highlightQuizText(question.prompt).toString()).append("\n\n");
-            String[] letters = {"A", "B", "C", "D"};
-            for (int i = 0; i < question.options.size(); i++) {
-                out.append(letters[i]).append(") ").append(question.options.get(i));
-                if (i == question.correctIndex) out.append(" [CORRETA]");
-                if (i == quizLastChoice) out.append(" [MARCADA]");
-                out.append("\n");
-            }
-            out.append("\nObservacao: escreva aqui o que ficou incoerente antes de enviar.\n");
-            File file = new File(exportDir(), "denuncia-teste-" + System.currentTimeMillis() + ".txt");
-            FileOutputStream stream = new FileOutputStream(file);
-            stream.write(out.toString().getBytes(StandardCharsets.UTF_8));
+            File file = quizBugLogFile();
+            FileOutputStream stream = new FileOutputStream(file, true);
+            stream.write(buildQuizBugEntry().getBytes(StandardCharsets.UTF_8));
             stream.close();
-            shareFile("Exportar denúncia do teste", file, "text/plain", "Denúncia de pergunta - Caderno de Receitas");
+            toast("Denúncia salva. Toque longo para exportar tudo.");
         } catch (Exception e) {
-            toast("Não foi possível exportar a denúncia.");
+            toast("Não foi possível salvar a denúncia.");
         }
+    }
+
+    private void exportQuizBugReports() {
+        File file = quizBugLogFile();
+        if (!file.exists() || file.length() == 0) {
+            toast("Nenhuma denúncia salva ainda.");
+            return;
+        }
+        shareFile("Exportar denúncias do teste", file, "text/plain", "Denúncias do teste - Caderno de Receitas");
+    }
+
+    private File quizBugLogFile() {
+        return new File(getFilesDir(), "denuncias-teste.txt");
+    }
+
+    private String buildQuizBugEntry() {
+        if (quizIndex < 0 || quizIndex >= quizQuestions.size()) return "sem pergunta ativa\n---\n";
+        QuizQuestion question = quizQuestions.get(quizIndex);
+        StringBuilder out = new StringBuilder();
+        out.append("---\n");
+        out.append(new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT).format(new Date())).append(" | ");
+        out.append("q=").append(quizIndex + 1).append('/').append(quizQuestions.size()).append(" | ");
+        out.append("model=").append(question.modelId).append(" | lvl=").append(question.level).append(" | score=").append(quizScore).append("\n");
+        out.append("prompt: ").append(highlightQuizText(question.prompt).toString()).append("\n");
+        String[] letters = {"A", "B", "C", "D"};
+        for (int i = 0; i < question.options.size(); i++) {
+            out.append(letters[i]).append(')').append(question.options.get(i));
+            if (i == question.correctIndex) out.append(" [C]");
+            if (i == quizLastChoice) out.append(" [M]");
+            out.append("\n");
+        }
+        return out.toString();
     }
     private void showQuizResult() {
         stopQuizTimer();
@@ -2868,9 +2918,13 @@ public class MainActivity extends Activity {
         private final Paint track = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint progressPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint clonePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF cloneArc = new RectF();
         private final RectF arc = new RectF();
         private float progress = 1f;
         private float flash = 0f;
+        private float cloneScale = 1f;
+        private float cloneAlpha = 0f;
         private boolean urgent;
 
         TimeCircleView(Context context) {
@@ -2879,6 +2933,8 @@ public class MainActivity extends Activity {
             progressPaint.setStyle(Paint.Style.STROKE);
             progressPaint.setStrokeCap(Paint.Cap.ROUND);
             glowPaint.setStyle(Paint.Style.FILL);
+            clonePaint.setStyle(Paint.Style.STROKE);
+            clonePaint.setStrokeCap(Paint.Cap.ROUND);
         }
 
         void setProgress(float value) {
@@ -2894,13 +2950,22 @@ public class MainActivity extends Activity {
         }
 
         void flashBonus() {
-            ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f, 0f);
-            animator.setDuration(520);
-            animator.addUpdateListener(a -> {
+            ValueAnimator glow = ValueAnimator.ofFloat(0f, 1f, 0f);
+            glow.setDuration(520);
+            glow.addUpdateListener(a -> {
                 flash = (float) a.getAnimatedValue();
                 invalidate();
             });
-            animator.start();
+            ValueAnimator clone = ValueAnimator.ofFloat(0f, 1f);
+            clone.setDuration(1500);
+            clone.addUpdateListener(a -> {
+                float t = (float) a.getAnimatedValue();
+                cloneScale = 1f + t;
+                cloneAlpha = 1f - t;
+                invalidate();
+            });
+            glow.start();
+            clone.start();
         }
 
         @Override
@@ -2913,6 +2978,16 @@ public class MainActivity extends Activity {
             track.setColor(Color.argb(105, 232, 201, 142));
             progressPaint.setStrokeWidth(stroke);
             int base = urgent ? Color.rgb(184, 50, 22) : Color.rgb(217, 154, 59);
+            if (cloneAlpha > 0f) {
+                float cx = getWidth() / 2f;
+                float cy = getHeight() / 2f;
+                float baseRadius = (Math.min(getWidth(), getHeight()) - stroke - 6f) / 2f;
+                float radius = baseRadius * cloneScale;
+                cloneArc.set(cx - radius, cy - radius, cx + radius, cy + radius);
+                clonePaint.setStrokeWidth(stroke);
+                clonePaint.setColor(Color.argb((int) (150 * cloneAlpha), 217, 154, 59));
+                canvas.drawArc(cloneArc, -90, 360 * progress, false, clonePaint);
+            }
             if (flash > 0f) {
                 glowPaint.setColor(Color.argb((int) (78 * flash), 217, 154, 59));
                 canvas.drawCircle(getWidth() / 2f, getHeight() / 2f, Math.min(getWidth(), getHeight()) * 0.48f, glowPaint);
