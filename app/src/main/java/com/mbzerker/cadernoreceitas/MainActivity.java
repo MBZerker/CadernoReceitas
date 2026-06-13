@@ -797,7 +797,7 @@ public class MainActivity extends Activity {
         ImageButton reportButton = imageIconButton(R.drawable.ic_report, RED_DARK, Color.WHITE);
         reportButton.setContentDescription("Denunciar pergunta");
         reportButton.setOnClickListener(v -> saveQuizBugReport());
-        reportButton.setOnLongClickListener(v -> { exportQuizBugReports(); return true; });
+        reportButton.setOnLongClickListener(v -> { showQuizBugReportOptions(); return true; });
         row.addView(reportButton, new LinearLayout.LayoutParams(dp(56), dp(56)));
         return row;
     }
@@ -1082,27 +1082,82 @@ public class MainActivity extends Activity {
             FileOutputStream stream = new FileOutputStream(file, true);
             stream.write(buildQuizBugEntry().getBytes(StandardCharsets.UTF_8));
             stream.close();
-            toast("Denúncia salva. Toque longo para exportar tudo.");
+            trimQuizBugLog(file, 40);
+            toast("Denuncia salva. Toque longo para exportar ou limpar.");
         } catch (Exception e) {
-            toast("Não foi possível salvar a denúncia.");
+            toast("Nao foi possivel salvar a denuncia.");
         }
     }
 
-    private void exportQuizBugReports() {
+    private void showQuizBugReportOptions() {
+        File file = quizBugLogFile();
+        if (!file.exists() || file.length() == 0) {
+            toast("Nenhuma denuncia salva ainda.");
+            return;
+        }
+        showThemed(themedDialog("Denuncias do teste", null)
+            .setMessage("Existem denuncias salvas. Voce pode exportar sem apagar, exportar e limpar o arquivo ativo, ou limpar manualmente.")
+            .setPositiveButton("Exportar", (d, w) -> exportQuizBugReports(false))
+            .setNeutralButton("Exportar e limpar", (d, w) -> exportQuizBugReports(true))
+            .setNegativeButton("Limpar", (d, w) -> clearQuizBugReports()));
+    }
+
+    private void exportQuizBugReports(boolean clearAfterCopy) {
         try {
             File file = quizBugLogFile();
             if (!file.exists() || file.length() == 0) {
-                toast("Nenhuma denúncia salva ainda.");
+                toast("Nenhuma denuncia salva ainda.");
                 return;
             }
-            File out = new File(exportDir(), "denuncias-teste.txt");
+            File out = new File(exportDir(), "denuncias-teste-" + new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(new Date()) + ".txt");
             copyFile(file, out);
-            shareFile("Exportar denúncias do teste", out, "text/plain", "Denúncias do teste - Caderno de Receitas");
+            if (clearAfterCopy) clearQuizBugLogFile();
+            shareFile("Exportar denuncias do teste", out, "text/plain", "Denuncias do teste - Caderno de Receitas");
         } catch (Exception e) {
-            toast("Não foi possível exportar as denúncias.");
+            toast("Nao foi possivel exportar as denuncias.");
         }
     }
 
+    private void clearQuizBugReports() {
+        clearQuizBugLogFile();
+        toast("Denuncias limpas.");
+    }
+
+    private void clearQuizBugLogFile() {
+        try {
+            File file = quizBugLogFile();
+            if (file.exists()) new FileOutputStream(file, false).close();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void trimQuizBugLog(File file, int maxEntries) throws IOException {
+        if (!file.exists() || file.length() < 4096) return;
+        String text = new String(readAllBytes(file), StandardCharsets.UTF_8);
+        String[] chunks = text.split("(?m)^---\\s*$");
+        ArrayList<String> entries = new ArrayList<>();
+        for (String chunk : chunks) {
+            String clean = chunk.trim();
+            if (!clean.isEmpty()) entries.add(clean);
+        }
+        if (entries.size() <= maxEntries && file.length() <= 90000) return;
+        int start = Math.max(0, entries.size() - maxEntries);
+        StringBuilder out = new StringBuilder();
+        for (int i = start; i < entries.size(); i++) out.append("---\n").append(entries.get(i)).append("\n");
+        FileOutputStream stream = new FileOutputStream(file, false);
+        stream.write(out.toString().getBytes(StandardCharsets.UTF_8));
+        stream.close();
+    }
+
+    private byte[] readAllBytes(File file) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (InputStream in = new FileInputStream(file)) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = in.read(buffer)) != -1) out.write(buffer, 0, read);
+        }
+        return out.toByteArray();
+    }
     private File quizBugLogFile() {
         return new File(getFilesDir(), "denuncias-teste.txt");
     }

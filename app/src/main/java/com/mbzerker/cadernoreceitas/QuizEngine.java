@@ -209,7 +209,8 @@ final class QuizEngine {
     private static Question quantityIngredientPair(ContextData c, int id, int level, Random r) {
         IngredientPick pick = pickIngredient(c, i -> i.hasQuantity(), r);
         if (pick == null) return null;
-        return question(id, level, "Qual par quantidade + ingrediente pertence a \"" + pick.recipe.name + "\"?", quantityIngredient(pick.ingredient), comboDistractors(quantityIngredient(pick.ingredient), quantityIngredientOptions(c, pick.recipe), 3));
+        AnswerRule rule = quantityIngredientPairRule(pick.recipe);
+        return question(id, level, "Qual par quantidade + ingrediente pertence a \"" + pick.recipe.name + "\"?", quantityIngredient(pick.ingredient), invalidQuantityIngredientOptions(c, pick.recipe, quantityIngredient(pick.ingredient), rule, 3), rule);
     }
 
     private static Question categoryForIngredient(ContextData c, int id, int level, Random r) {
@@ -248,7 +249,8 @@ final class QuizEngine {
     private static Question ingredientUnitPair(ContextData c, int id, int level, Random r) {
         IngredientPick pick = pickIngredient(c, i -> i.hasMeasuredUnit(), r);
         if (pick == null) return null;
-        return question(id, level, "Qual par ingrediente + unidade pertence a \"" + pick.recipe.name + "\"?", ingredientUnit(pick.ingredient), comboDistractors(ingredientUnit(pick.ingredient), ingredientUnitOptions(c, pick.recipe), 3));
+        AnswerRule rule = ingredientUnitPairRule(pick.recipe);
+        return question(id, level, "Qual par ingrediente + unidade pertence a \"" + pick.recipe.name + "\"?", ingredientUnit(pick.ingredient), invalidIngredientUnitOptions(c, pick.recipe, ingredientUnit(pick.ingredient), rule, 3), rule);
     }
 
     private static Question ingredientCount(ContextData c, int id, int level, Random r) {
@@ -321,7 +323,8 @@ final class QuizEngine {
     private static Question fullQuantityUnitCombo(ContextData c, int id, int level, Random r) {
         IngredientPick pick = pickIngredient(c, i -> i.hasQuantity() && i.hasMeasuredUnit(), r);
         if (pick == null) return null;
-        return question(id, level, "Qual alternativa representa corretamente ingrediente + quantidade + unidade em \"" + pick.recipe.name + "\"?", ingredientQuantityUnit(pick.ingredient), comboDistractors(ingredientQuantityUnit(pick.ingredient), ingredientQuantityUnitOptions(c, pick.recipe), 3));
+        AnswerRule rule = ingredientQuantityUnitRule(pick.recipe);
+        return question(id, level, "Qual alternativa representa corretamente ingrediente + quantidade + unidade em \"" + pick.recipe.name + "\"?", ingredientQuantityUnit(pick.ingredient), invalidIngredientQuantityUnitOptions(c, pick.recipe, ingredientQuantityUnit(pick.ingredient), rule, 3), rule);
     }
 
     private static Question ingredientOnlyInFirst(ContextData c, int id, int level, Random r) {
@@ -1152,6 +1155,47 @@ final class QuizEngine {
         return out;
     }
 
+    private static ArrayList<String> invalidQuantityIngredientOptions(ContextData c, RecipeData recipe, String correct, AnswerRule rule, int count) {
+        ArrayList<String> out = new ArrayList<>();
+        for (IngredientData item : c.allIngredients) addInvalidOption(out, quantityIngredient(item), correct, rule);
+        for (IngredientData item : recipe.ingredients) if (item.hasQuantity()) addInvalidOption(out, nearbyQuantity(item) + " - " + item.name, correct, rule);
+        return firstWithout(out, correct, count);
+    }
+
+    private static ArrayList<String> invalidIngredientUnitOptions(ContextData c, RecipeData recipe, String correct, AnswerRule rule, int count) {
+        ArrayList<String> out = new ArrayList<>();
+        for (IngredientData item : c.allIngredients) addInvalidOption(out, ingredientUnit(item), correct, rule);
+        for (IngredientData item : recipe.ingredients) if (item.hasMeasuredUnit()) addInvalidOption(out, item.name + " - " + wrongUnit(item.unit()), correct, rule);
+        return firstWithout(out, correct, count);
+    }
+
+    private static ArrayList<String> invalidIngredientQuantityUnitOptions(ContextData c, RecipeData recipe, String correct, AnswerRule rule, int count) {
+        ArrayList<String> out = new ArrayList<>();
+        for (IngredientData item : c.allIngredients) addInvalidOption(out, ingredientQuantityUnit(item), correct, rule);
+        for (IngredientData item : recipe.ingredients) {
+            if (!item.hasQuantity() || !item.hasMeasuredUnit()) continue;
+            addInvalidOption(out, item.name + " - " + nearbyQuantity(item) + " - " + item.unit(), correct, rule);
+            addInvalidOption(out, item.name + " - " + item.quantity + " - " + wrongUnit(item.unit()), correct, rule);
+        }
+        return firstWithout(out, correct, count);
+    }
+
+    private static void addInvalidOption(ArrayList<String> out, String value, String correct, AnswerRule rule) {
+        if (value == null || value.trim().isEmpty()) return;
+        if (equivalentOption(value, correct)) return;
+        if (rule.isCorrect(value)) return;
+        addUnique(out, value);
+    }
+
+    private static String wrongUnit(String unit) {
+        String clean = norm(unit);
+        if ("g".equals(clean)) return "ml";
+        if ("kg".equals(clean)) return "g";
+        if ("ml".equals(clean)) return "g";
+        if ("l".equals(clean)) return "ml";
+        if ("un".equals(clean)) return "g";
+        return "un";
+    }
     private static ArrayList<String> categoryIngredientOptions(ContextData c, RecipeData recipe) {
         ArrayList<String> out = new ArrayList<>();
         for (IngredientData item : recipe.ingredients) if (item.hasCategory()) addUnique(out, categoryIngredient(item));
@@ -1305,6 +1349,32 @@ final class QuizEngine {
         };
     }
 
+    private static AnswerRule quantityIngredientPairRule(RecipeData recipe) {
+        return option -> {
+            for (IngredientData item : recipe.ingredients) {
+                if (item.hasQuantity() && equivalentOption(quantityIngredient(item), option)) return true;
+            }
+            return false;
+        };
+    }
+
+    private static AnswerRule ingredientUnitPairRule(RecipeData recipe) {
+        return option -> {
+            for (IngredientData item : recipe.ingredients) {
+                if (item.hasMeasuredUnit() && equivalentOption(ingredientUnit(item), option)) return true;
+            }
+            return false;
+        };
+    }
+
+    private static AnswerRule ingredientQuantityUnitRule(RecipeData recipe) {
+        return option -> {
+            for (IngredientData item : recipe.ingredients) {
+                if (item.hasQuantity() && item.hasMeasuredUnit() && equivalentOption(ingredientQuantityUnit(item), option)) return true;
+            }
+            return false;
+        };
+    }
     private static AnswerRule categoryRule(String category) {
         return option -> norm(optionName(option)).equals(norm(category));
     }

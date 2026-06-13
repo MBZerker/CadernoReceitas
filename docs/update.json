@@ -1,12 +1,12 @@
 {
-    "versionCode":  18,
-    "versionName":  "0.18.0-java",
+    "versionCode":  19,
+    "versionName":  "0.19.0-java",
     "critical":  false,
     "pageUrl":  "https://mbzerker.github.io/CadernoReceitas/",
-    "apkUrl":  "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.18.0-java.apk",
-    "sha256":  "BB945FA3D0BFCF8563A2F423628D42D2217127BC1F229B986B225DCE2A5B830C",
-    "sizeBytes":  22735803,
+    "apkUrl":  "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.19.0-java.apk",
+    "sha256":  "7C32FADC25D5029968D7087771B5FD80DA201458FA1A644AFA85EE4DB7848878",
+    "sizeBytes":  22737679,
     "signatureSha256":  "f8dec9a06ec4eaf93a1a9b7f5b5cf73490d54d227f0ee172f83177557c79bfe8",
     "origin":  "GitHub Pages oficial do Caderno de Receitas",
-    "changelog":  "Correcoes nas denuncias do teste: exportacao por toque longo agora copia o arquivo acumulado para area compartilhavel antes de enviar, evitando fechamento do app, e o relatorio ganhou diagnostico compacto comparando alternativas com ingredientes das receitas citadas."
+    "changelog":  "Melhorias no teste: log de denuncias agora tem limite automatico de 40 itens e menu para exportar, exportar e limpar ou limpar; modelos de quantidade+ingrediente, ingrediente+unidade e ingrediente+quantidade+unidade agora validam todas as alternativas contra a receita para evitar mais de uma resposta verdadeira."
 }
