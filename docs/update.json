@@ -1,12 +1,12 @@
 {
-    "versionCode":  19,
-    "versionName":  "0.19.0-java",
+    "versionCode":  20,
+    "versionName":  "0.20.0-java",
     "critical":  false,
     "pageUrl":  "https://mbzerker.github.io/CadernoReceitas/",
-    "apkUrl":  "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.19.0-java.apk",
-    "sha256":  "7C32FADC25D5029968D7087771B5FD80DA201458FA1A644AFA85EE4DB7848878",
-    "sizeBytes":  22737679,
+    "apkUrl":  "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.20.0-java.apk",
+    "sha256":  "46C028435B3CB2039953A312286CEDABBB235E86A6A6DB76C5B3397559BA1994",
+    "sizeBytes":  22741386,
     "signatureSha256":  "f8dec9a06ec4eaf93a1a9b7f5b5cf73490d54d227f0ee172f83177557c79bfe8",
     "origin":  "GitHub Pages oficial do Caderno de Receitas",
-    "changelog":  "Melhorias no teste: log de denuncias agora tem limite automatico de 40 itens e menu para exportar, exportar e limpar ou limpar; modelos de quantidade+ingrediente, ingrediente+unidade e ingrediente+quantidade+unidade agora validam todas as alternativas contra a receita para evitar mais de uma resposta verdadeira."
+    "changelog":  "Quiz reformulado com modos Prova, Treino e Desafio. Prova agora usa limite de erros e penalidade em vez de encerrar no primeiro erro, Treino permite estudar sem eliminacao, Desafio mantem morte subita. Melhor pontuacao por caderno e modo foi adicionada. Timer agora mostra segundos, bonus/extra e muda suavemente de verde para amarelo e vermelho com atualizacao mais fluida."
 }

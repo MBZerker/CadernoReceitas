@@ -65,6 +65,10 @@ public class MainActivity extends Activity {
     private static final int QUIZ_ROUND_SIZE = QuizEngine.ROUND_SIZE;
     private static final long QUIZ_BASE_TIME_MS = 30000L;
     private static final int QUIZ_MAX_BONUS_SECONDS = 10;
+    private static final String QUIZ_MODE_TREINO = "Treino";
+    private static final String QUIZ_MODE_PROVA = "Prova";
+    private static final String QUIZ_MODE_DESAFIO = "Desafio";
+    private static final int QUIZ_PROVA_MAX_ERROS = 5;
     private static final int RED = Color.rgb(184, 50, 22);
     private static final int RED_DARK = Color.rgb(127, 29, 18);
     private static final int GOLD = Color.rgb(217, 154, 59);
@@ -92,6 +96,12 @@ public class MainActivity extends Activity {
     private final ArrayList<TextView> quizOptionViews = new ArrayList<>();
     private int quizIndex;
     private int quizScore;
+    private int quizCorrectCount;
+    private int quizMistakes;
+    private int quizStreak;
+    private int quizBestStreak;
+    private long quizRoundStartedAt;
+    private String quizMode = QUIZ_MODE_PROVA;
     private long quizDeadline;
     private long quizBaseDeadline;
     private long quizQuestionStartedAt;
@@ -403,16 +413,54 @@ public class MainActivity extends Activity {
             toast("Teste bloqueado: cadastre pelo menos 5 receitas neste caderno.");
             return;
         }
-        showThemed(themedDialog("Iniciar teste?", null)
-            .setMessage("Deseja fazer o teste deste caderno agora?")
-            .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Começar", (d, w) -> startQuizOrExplain()));
+        showQuizModeSelection();
+    }
+
+    private void showQuizModeSelection() {
+        screen = "quiz_modes";
+        base(R.drawable.bg_quiz);
+        LinearLayout top = card();
+        top.addView(headerInline("Escolha o teste", () -> showCaderno(currentCadernoId)));
+        TextView lead = label("Selecione como quer estudar este caderno.", 16, MUTED, false);
+        lead.setGravity(Gravity.CENTER);
+        top.addView(lead, matchWrapWithTop(dp(4)));
+        root.addView(top);
+
+        root.addView(quizModeCard(QUIZ_MODE_PROVA, "Prova", "30 perguntas, limite de 5 erros, bonus por velocidade e melhor pontuacao salva.", RED_DARK));
+        root.addView(quizModeCard(QUIZ_MODE_TREINO, "Treino", "Sem eliminacao. Errou, aprende e continua. Ideal para memorizar receitas.", GOLD));
+        root.addView(quizModeCard(QUIZ_MODE_DESAFIO, "Desafio", "Morte subita. Errou ou estourou o tempo, acaba. Para testar foco total.", RED));
+    }
+
+    private LinearLayout quizModeCard(String mode, String title, String subtitle, int color) {
+        LinearLayout box = card();
+        box.setPadding(dp(14), dp(14), dp(14), dp(14));
+        LinearLayout row = hrow();
+        row.addView(frameIcon(R.drawable.ic_report, color, dp(48)), new LinearLayout.LayoutParams(dp(58), dp(66)));
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        TextView titleView = label(title, 21, color, true);
+        text.addView(titleView);
+        text.addView(label(subtitle, 14, MUTED, false), matchWrapWithTop(dp(4)));
+        int best = db.bestQuizScore(currentCadernoId, mode);
+        String bestText = best > 0 ? "Melhor: " + best + " pontos" : "Sem pontuacao salva";
+        text.addView(label(bestText, 13, INK, true), matchWrapWithTop(dp(7)));
+        row.addView(text, new LinearLayout.LayoutParams(0, -2, 1));
+        ImageButton go = imageIconButton(R.drawable.ic_arrow_right, color, Color.WHITE);
+        go.setContentDescription("Iniciar " + title);
+        row.addView(go, new LinearLayout.LayoutParams(dp(54), dp(54)));
+        box.addView(row);
+        View.OnClickListener action = v -> {
+            quizMode = mode;
+            startQuizOrExplain();
+        };
+        box.setOnClickListener(action);
+        go.setOnClickListener(action);
+        return box;
     }
 
     private void startQuizOrExplain() {
-        showQuizLoading("Preparando teste...", this::startQuizAfterLoading);
+        showQuizLoading("Preparando " + quizMode.toLowerCase(Locale.ROOT) + "...", this::startQuizAfterLoading);
     }
-
     private void startQuizAfterLoading() {
         quizQuestions.clear();
         quizQuestions.addAll(buildQuizQuestions());
@@ -424,6 +472,11 @@ public class MainActivity extends Activity {
         }
         quizIndex = 0;
         quizScore = 0;
+        quizCorrectCount = 0;
+        quizMistakes = 0;
+        quizStreak = 0;
+        quizBestStreak = 0;
+        quizRoundStartedAt = System.currentTimeMillis();
         quizBonusSeconds = 0;
         showQuizQuestion();
     }
@@ -755,7 +808,7 @@ public class MainActivity extends Activity {
         LinearLayout timerRow = new LinearLayout(this);
         timerRow.setGravity(Gravity.CENTER);
         quizTimerView = new TimeCircleView(this);
-        timerRow.addView(quizTimerView, new LinearLayout.LayoutParams(dp(78), dp(78)));
+        timerRow.addView(quizTimerView, new LinearLayout.LayoutParams(dp(104), dp(104)));
         top.addView(timerRow, matchWrapWithTop(dp(4)));
         top.addView(quizHud(question));
         root.addView(top);
@@ -803,8 +856,9 @@ public class MainActivity extends Activity {
     }
     private String quizTitle() {
         Item caderno = db.get("cadernos", currentCadernoId);
-        if (caderno.name == null || caderno.name.trim().isEmpty()) return "Teste do Caderno";
-        return "Teste do " + caderno.name;
+        String prefix = quizMode == null || quizMode.trim().isEmpty() ? "Teste" : quizMode;
+        if (caderno.name == null || caderno.name.trim().isEmpty()) return prefix + " do Caderno";
+        return prefix + " do " + caderno.name;
     }
 
     private LinearLayout quizHud(QuizQuestion question) {
@@ -814,8 +868,8 @@ public class MainActivity extends Activity {
         grid.setPadding(0, dp(8), 0, 0);
         grid.addView(statChip("Perg.", (quizIndex + 1) + "/" + quizQuestions.size(), RED_DARK), new LinearLayout.LayoutParams(0, -2, 1));
         grid.addView(statChip("Pontos", String.valueOf(quizScore), GOLD), new LinearLayout.LayoutParams(0, -2, 1));
-        grid.addView(statChip("Nivel", String.valueOf(Math.max(1, question.level)), RED), new LinearLayout.LayoutParams(0, -2, 1));
-        grid.addView(statChip("Fase", phaseLabel(question.level), MUTED), new LinearLayout.LayoutParams(0, -2, 1));
+        grid.addView(statChip("Erros", quizMistakes + errorLimitLabel(), RED), new LinearLayout.LayoutParams(0, -2, 1));
+        grid.addView(statChip("Modo", quizModeShort(), MUTED), new LinearLayout.LayoutParams(0, -2, 1));
         return grid;
     }
 
@@ -830,6 +884,17 @@ public class MainActivity extends Activity {
         return chip;
     }
 
+    private String errorLimitLabel() {
+        if (QUIZ_MODE_PROVA.equals(quizMode)) return "/" + QUIZ_PROVA_MAX_ERROS;
+        if (QUIZ_MODE_DESAFIO.equals(quizMode)) return "/1";
+        return "";
+    }
+
+    private String quizModeShort() {
+        if (QUIZ_MODE_TREINO.equals(quizMode)) return "Treino";
+        if (QUIZ_MODE_DESAFIO.equals(quizMode)) return "Desafio";
+        return "Prova";
+    }
     private String phaseLabel(int level) {
         if (level <= 1) return "Base";
         if (level == 2) return "Associar";
@@ -942,10 +1007,10 @@ public class MainActivity extends Activity {
                     quizBonusSeconds = 0;
                     quizDeadline = now + quizBonusWindowMs;
                     if (quizTimerView != null) quizTimerView.flashBonus();
-                    quizHandler.postDelayed(quizTick, 120);
+                    quizHandler.postDelayed(quizTick, 50);
                     return;
                 } else {
-                    showGameOver("Tempo esgotado");
+                    failQuizQuestion(-1, "Tempo esgotado");
                     return;
                 }
             }
@@ -953,13 +1018,13 @@ public class MainActivity extends Activity {
                 float total = quizUsingBonus ? Math.max(1f, quizBonusWindowMs) : (float) QUIZ_BASE_TIME_MS;
                 float progress = Math.max(0f, Math.min(1f, left / total));
                 quizTimerView.setProgress(progress);
+                quizTimerView.setTime(left, quizUsingBonus ? 0 : quizBonusSeconds, quizUsingBonus);
                 quizTimerView.setUrgent(progress < 0.22f);
             }
-            quizHandler.postDelayed(quizTick, 250);
+            quizHandler.postDelayed(quizTick, 50);
         };
         quizHandler.post(quizTick);
     }
-
     private void stopQuizTimer() {
         if (quizTick != null) quizHandler.removeCallbacks(quizTick);
         if (quizPendingGameOver != null) quizHandler.removeCallbacks(quizPendingGameOver);
@@ -976,25 +1041,65 @@ public class MainActivity extends Activity {
         stopQuizTimer();
         QuizQuestion question = quizQuestions.get(quizIndex);
         if (choice != question.correctIndex) {
-            showWrongAnswerFeedback(choice, question.correctIndex);
+            failQuizQuestion(choice, "Resposta incorreta");
             return;
         }
+        int points = scoreCorrectAnswer();
+        quizScore += points;
+        quizCorrectCount++;
+        quizStreak++;
+        quizBestStreak = Math.max(quizBestStreak, quizStreak);
         addTimeBonusFromCurrentAnswer();
-        quizScore += 10;
-        showCorrectFeedback(choice, () -> {
+        showCorrectFeedback(choice, points, () -> {
             quizIndex++;
             showQuizQuestion();
         });
     }
 
+    private int scoreCorrectAnswer() {
+        if (QUIZ_MODE_TREINO.equals(quizMode)) return 50;
+        int bonus = 0;
+        if (!quizUsingBonus) {
+            long left = Math.max(0, quizBaseDeadline - System.currentTimeMillis());
+            bonus = Math.min(50, (int) ((left * 50L) / QUIZ_BASE_TIME_MS));
+        }
+        return 100 + bonus;
+    }
+
+    private void failQuizQuestion(int choice, String reason) {
+        if (quizAnswered && choice < 0) return;
+        quizAnswered = true;
+        quizLastChoice = choice;
+        stopQuizTimer();
+        QuizQuestion question = quizQuestions.get(quizIndex);
+        quizMistakes++;
+        quizStreak = 0;
+        if (QUIZ_MODE_PROVA.equals(quizMode)) quizScore = Math.max(0, quizScore + ("Tempo esgotado".equals(reason) ? -60 : -40));
+        else if (QUIZ_MODE_DESAFIO.equals(quizMode)) quizScore = Math.max(0, quizScore - 100);
+        showWrongAnswerFeedback(choice, question.correctIndex, reason);
+    }
+
+    private boolean shouldFinishAfterWrong() {
+        if (QUIZ_MODE_DESAFIO.equals(quizMode)) return true;
+        return QUIZ_MODE_PROVA.equals(quizMode) && quizMistakes >= QUIZ_PROVA_MAX_ERROS;
+    }
+
+    private void continueAfterWrong(String reason) {
+        if (shouldFinishAfterWrong()) {
+            showQuizResult(reason);
+            return;
+        }
+        quizIndex++;
+        showQuizQuestion();
+    }
+
     private void addTimeBonusFromCurrentAnswer() {
-        if (quizUsingBonus) return;
+        if (quizUsingBonus || QUIZ_MODE_TREINO.equals(quizMode)) return;
         long left = Math.max(0, quizBaseDeadline - System.currentTimeMillis());
         int earned = (int) (left / 5000L);
         if (earned > 0) quizBonusSeconds = Math.min(QUIZ_MAX_BONUS_SECONDS, quizBonusSeconds + earned);
     }
-
-    private void showCorrectFeedback(int correctIndex, Runnable next) {
+    private void showCorrectFeedback(int correctIndex, int points, Runnable next) {
         for (TextView option : quizOptionViews) option.setEnabled(false);
         if (correctIndex >= 0 && correctIndex < quizOptionViews.size()) {
             TextView correct = quizOptionViews.get(correctIndex);
@@ -1003,7 +1108,7 @@ public class MainActivity extends Activity {
         }
         FrameLayout overlay = new FrameLayout(this);
         overlay.setClickable(false);
-        TextView ok = label("+10", 24, Color.WHITE, true);
+        TextView ok = label("+" + points, 24, Color.WHITE, true);
         ok.setGravity(Gravity.CENTER);
         ok.setBackground(round(GOLD, dp(44), Color.argb(190, 255, 236, 196), 2));
         FrameLayout.LayoutParams okParams = new FrameLayout.LayoutParams(dp(88), dp(88), Gravity.CENTER);
@@ -1028,7 +1133,7 @@ public class MainActivity extends Activity {
         pop.start();
     }
 
-    private void showWrongAnswerFeedback(int wrongIndex, int correctIndex) {
+    private void showWrongAnswerFeedback(int wrongIndex, int correctIndex, String reason) {
         for (TextView option : quizOptionViews) option.setEnabled(false);
         if (wrongIndex >= 0 && wrongIndex < quizOptionViews.size()) {
             TextView wrong = quizOptionViews.get(wrongIndex);
@@ -1049,7 +1154,7 @@ public class MainActivity extends Activity {
         View.OnClickListener finishWrong = v -> {
             root.setOnClickListener(null);
             if (contentScroll != null) contentScroll.setOnClickListener(null);
-            if ("quiz".equals(screen)) showGameOver("Resposta incorreta");
+            if ("quiz".equals(screen)) continueAfterWrong(reason);
         };
         ImageButton proceed = imageIconButton(R.drawable.ic_arrow_right, RED_DARK, Color.WHITE);
         proceed.setContentDescription("Prosseguir");
@@ -1263,19 +1368,36 @@ public class MainActivity extends Activity {
         return out.toString();
     }
     private void showQuizResult() {
+        showQuizResult("Teste concluido");
+    }
+
+    private void showQuizResult(String reason) {
         stopQuizTimer();
         screen = "quiz_result";
+        long elapsed = quizRoundStartedAt > 0 ? Math.max(0, System.currentTimeMillis() - quizRoundStartedAt) : 0;
+        db.saveQuizScore(currentCadernoId, quizMode, quizScore, quizCorrectCount, quizMistakes, quizQuestions.size(), elapsed);
+        int best = db.bestQuizScore(currentCadernoId, quizMode);
         base(R.drawable.bg_quiz);
         LinearLayout result = card();
-        TextView title = label("Resultado", 26, RED, true);
+        TextView title = label(resultTitle(reason), 26, RED, true);
         title.setGravity(Gravity.CENTER);
         result.addView(title);
-        TextView score = label("Pontuação final: " + quizScore + " pontos", 22, INK, true);
+        TextView score = label(quizScore + " pontos", 42, RED_DARK, true);
         score.setGravity(Gravity.CENTER);
-        result.addView(score);
-        TextView detail = label("Você passou pelo teste sem cair nas pegadinhas.", 15, MUTED, false);
+        result.addView(score, matchWrapWithTop(dp(8)));
+        TextView bestText = label("Melhor " + quizMode + ": " + best + " pontos", 16, GOLD, true);
+        bestText.setGravity(Gravity.CENTER);
+        result.addView(bestText, matchWrapWithTop(dp(4)));
+        LinearLayout stats = new LinearLayout(this);
+        stats.setOrientation(LinearLayout.HORIZONTAL);
+        stats.setGravity(Gravity.CENTER);
+        stats.addView(statChip("Acertos", String.valueOf(quizCorrectCount), Color.rgb(31, 96, 55)), new LinearLayout.LayoutParams(0, -2, 1));
+        stats.addView(statChip("Erros", String.valueOf(quizMistakes), RED), new LinearLayout.LayoutParams(0, -2, 1));
+        stats.addView(statChip("Seq.", String.valueOf(quizBestStreak), GOLD), new LinearLayout.LayoutParams(0, -2, 1));
+        result.addView(stats, matchWrapWithTop(dp(12)));
+        TextView detail = label(resultDetail(reason), 15, MUTED, false);
         detail.setGravity(Gravity.CENTER);
-        result.addView(detail);
+        result.addView(detail, matchWrapWithTop(dp(10)));
         LinearLayout row = iconStrip();
         addWeightedStripIcon(row, R.drawable.ic_back, RED, "Voltar", v -> showCaderno(currentCadernoId));
         addWeightedStripIcon(row, R.drawable.ic_report, RED_DARK, "Novo teste", v -> askStartQuiz());
@@ -1283,6 +1405,18 @@ public class MainActivity extends Activity {
         root.addView(result);
     }
 
+    private String resultTitle(String reason) {
+        if (QUIZ_MODE_PROVA.equals(quizMode) && quizMistakes >= QUIZ_PROVA_MAX_ERROS) return "Limite de erros";
+        if (QUIZ_MODE_DESAFIO.equals(quizMode) && !"Teste concluido".equals(reason)) return "Desafio encerrado";
+        return "Resultado";
+    }
+
+    private String resultDetail(String reason) {
+        if (QUIZ_MODE_TREINO.equals(quizMode)) return "Treino finalizado. Use os erros como guia para revisar as receitas.";
+        if (QUIZ_MODE_PROVA.equals(quizMode) && quizMistakes >= QUIZ_PROVA_MAX_ERROS) return "A prova terminou ao atingir o limite de erros. Revise as receitas marcadas e tente bater sua melhor pontuacao.";
+        if (QUIZ_MODE_DESAFIO.equals(quizMode) && !"Teste concluido".equals(reason)) return reason + ". No desafio, qualquer falha encerra a partida.";
+        return "Voce concluiu o teste sem passar do limite de erros.";
+    }
     private void showGameOver(String reason) {
         stopQuizTimer();
         screen = "game_over";
@@ -3069,6 +3203,8 @@ public class MainActivity extends Activity {
         private final Paint progressPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint clonePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint timeTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint timeSubTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF cloneArc = new RectF();
         private final RectF arc = new RectF();
         private float progress = 1f;
@@ -3076,6 +3212,9 @@ public class MainActivity extends Activity {
         private float cloneScale = 1f;
         private float cloneAlpha = 0f;
         private boolean urgent;
+        private long displayLeftMs = QUIZ_BASE_TIME_MS;
+        private int displayBonusSeconds = 0;
+        private boolean displayExtra = false;
 
         TimeCircleView(Context context) {
             super(context);
@@ -3085,10 +3224,21 @@ public class MainActivity extends Activity {
             glowPaint.setStyle(Paint.Style.FILL);
             clonePaint.setStyle(Paint.Style.STROKE);
             clonePaint.setStrokeCap(Paint.Cap.ROUND);
+            timeTextPaint.setTextAlign(Paint.Align.CENTER);
+            timeTextPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+            timeSubTextPaint.setTextAlign(Paint.Align.CENTER);
+            timeSubTextPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
         }
 
         void setProgress(float value) {
             progress = Math.max(0f, Math.min(1f, value));
+            invalidate();
+        }
+
+        void setTime(long leftMs, int bonusSeconds, boolean extra) {
+            displayLeftMs = Math.max(0, leftMs);
+            displayBonusSeconds = Math.max(0, bonusSeconds);
+            displayExtra = extra;
             invalidate();
         }
 
@@ -3127,7 +3277,7 @@ public class MainActivity extends Activity {
             track.setStrokeWidth(stroke);
             track.setColor(Color.argb(105, 232, 201, 142));
             progressPaint.setStrokeWidth(stroke);
-            int base = urgent ? Color.rgb(184, 50, 22) : Color.rgb(217, 154, 59);
+            int base = timerColor(progress);
             if (cloneAlpha > 0f) {
                 float cx = getWidth() / 2f;
                 float cy = getHeight() / 2f;
@@ -3145,6 +3295,37 @@ public class MainActivity extends Activity {
             progressPaint.setColor(base);
             canvas.drawArc(arc, -90, 360, false, track);
             canvas.drawArc(arc, -90, 360 * progress, false, progressPaint);
+            drawTimeText(canvas, base);
+        }
+
+        private int timerColor(float value) {
+            float danger = 1f - Math.max(0f, Math.min(1f, value));
+            int green = Color.rgb(46, 125, 70);
+            int yellow = Color.rgb(217, 154, 59);
+            int red = Color.rgb(184, 50, 22);
+            if (danger < 0.55f) return blend(green, yellow, danger / 0.55f);
+            return blend(yellow, red, (danger - 0.55f) / 0.45f);
+        }
+
+        private int blend(int a, int b, float t) {
+            float v = Math.max(0f, Math.min(1f, t));
+            int r = (int) (Color.red(a) + (Color.red(b) - Color.red(a)) * v);
+            int g = (int) (Color.green(a) + (Color.green(b) - Color.green(a)) * v);
+            int bl = (int) (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * v);
+            return Color.rgb(r, g, bl);
+        }
+
+        private void drawTimeText(Canvas canvas, int color) {
+            int seconds = (int) Math.ceil(displayLeftMs / 1000d);
+            timeTextPaint.setColor(color);
+            timeTextPaint.setTextSize(Math.max(18f, getWidth() * 0.24f));
+            timeSubTextPaint.setColor(Color.rgb(118, 88, 72));
+            timeSubTextPaint.setTextSize(Math.max(10f, getWidth() * 0.105f));
+            Paint.FontMetrics fm = timeTextPaint.getFontMetrics();
+            float centerY = getHeight() / 2f - (fm.ascent + fm.descent) / 2f - getHeight() * 0.05f;
+            canvas.drawText(seconds + "s", getWidth() / 2f, centerY, timeTextPaint);
+            String sub = displayExtra ? "extra" : (displayBonusSeconds > 0 ? "+" + displayBonusSeconds + "s" : "normal");
+            canvas.drawText(sub, getWidth() / 2f, getHeight() * 0.68f, timeSubTextPaint);
         }
     }
 
@@ -3238,13 +3419,14 @@ public class MainActivity extends Activity {
     }
 
     class Db extends SQLiteOpenHelper {
-        Db(Context context) { super(context, "caderno_receitas_java.db", null, 3); }
+        Db(Context context) { super(context, "caderno_receitas_java.db", null, 4); }
 
         public void onCreate(SQLiteDatabase db) {
             db.execSQL("CREATE TABLE cadernos(id INTEGER PRIMARY KEY AUTOINCREMENT,nome TEXT NOT NULL,descricao TEXT,criado INTEGER,bloqueado INTEGER NOT NULL DEFAULT 1)");
             db.execSQL("CREATE TABLE categorias(id INTEGER PRIMARY KEY AUTOINCREMENT,caderno_id INTEGER NOT NULL,nome TEXT NOT NULL,descricao TEXT,criado INTEGER,bloqueado INTEGER NOT NULL DEFAULT 1)");
             db.execSQL("CREATE TABLE receitas(id INTEGER PRIMARY KEY AUTOINCREMENT,caderno_id INTEGER NOT NULL,categoria_id INTEGER NOT NULL,nome TEXT NOT NULL,preparo TEXT,bloqueado INTEGER NOT NULL DEFAULT 0)");
             db.execSQL("CREATE TABLE ingredientes(id INTEGER PRIMARY KEY AUTOINCREMENT,receita_id INTEGER NOT NULL,nome TEXT NOT NULL,quantidade TEXT,categoria TEXT,receita_link_id INTEGER NOT NULL DEFAULT 0,bloqueado INTEGER NOT NULL DEFAULT 1)");
+            createQuizScoresTable(db);
         }
 
         public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
@@ -3257,8 +3439,36 @@ public class MainActivity extends Activity {
                 addColumnIfMissing(db, "receitas", "bloqueado", "INTEGER NOT NULL DEFAULT 1");
                 addColumnIfMissing(db, "ingredientes", "bloqueado", "INTEGER NOT NULL DEFAULT 1");
             }
+            if (oldVersion < 4) {
+                createQuizScoresTable(db);
+            }
         }
 
+
+        void createQuizScoresTable(SQLiteDatabase db) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS quiz_scores(id INTEGER PRIMARY KEY AUTOINCREMENT,caderno_id INTEGER NOT NULL,modo TEXT NOT NULL,pontos INTEGER NOT NULL,acertos INTEGER NOT NULL,erros INTEGER NOT NULL,total INTEGER NOT NULL,tempo_ms INTEGER NOT NULL,criado INTEGER NOT NULL)");
+        }
+
+        void saveQuizScore(int caderno, String modo, int pontos, int acertos, int erros, int total, long tempoMs) {
+            ContentValues v = new ContentValues();
+            v.put("caderno_id", caderno);
+            v.put("modo", modo == null ? "Prova" : modo);
+            v.put("pontos", pontos);
+            v.put("acertos", acertos);
+            v.put("erros", erros);
+            v.put("total", total);
+            v.put("tempo_ms", tempoMs);
+            v.put("criado", System.currentTimeMillis());
+            getWritableDatabase().insert("quiz_scores", null, v);
+        }
+
+        int bestQuizScore(int caderno, String modo) {
+            try (Cursor c = getReadableDatabase().rawQuery("SELECT MAX(pontos) FROM quiz_scores WHERE caderno_id=? AND modo=?", new String[]{String.valueOf(caderno), modo == null ? "Prova" : modo})) {
+                if (c.moveToFirst()) return c.getInt(0);
+            } catch (Exception ignored) {
+            }
+            return 0;
+        }
         Item get(String table, int id) {
             try (Cursor c = getReadableDatabase().rawQuery("SELECT * FROM " + table + " WHERE id=?", new String[]{String.valueOf(id)})) {
                 if (c.moveToFirst()) {
