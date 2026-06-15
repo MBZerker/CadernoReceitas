@@ -209,8 +209,9 @@ final class QuizEngine {
     private static Question quantityIngredientPair(ContextData c, int id, int level, Random r) {
         IngredientPick pick = pickIngredient(c, i -> i.hasQuantity(), r);
         if (pick == null) return null;
-        AnswerRule rule = quantityIngredientPairRule(pick.recipe);
-        return question(id, level, "Qual par quantidade + ingrediente pertence a \"" + pick.recipe.name + "\"?", quantityIngredient(pick.ingredient), invalidQuantityIngredientOptions(c, pick.recipe, quantityIngredient(pick.ingredient), rule, 3), rule);
+        String correct = quantityIngredient(pick.ingredient);
+        AnswerRule rule = option -> equivalentOption(option, correct);
+        return question(id, level, "Qual par quantidade + ingrediente representa corretamente \"" + pick.ingredient.name + "\" em \"" + pick.recipe.name + "\"?", correct, invalidQuantityIngredientOptions(c, pick.recipe, correct, rule, 3), rule);
     }
 
     private static Question categoryForIngredient(ContextData c, int id, int level, Random r) {
@@ -249,8 +250,9 @@ final class QuizEngine {
     private static Question ingredientUnitPair(ContextData c, int id, int level, Random r) {
         IngredientPick pick = pickIngredient(c, i -> i.hasMeasuredUnit(), r);
         if (pick == null) return null;
-        AnswerRule rule = ingredientUnitPairRule(pick.recipe);
-        return question(id, level, "Qual par ingrediente + unidade pertence a \"" + pick.recipe.name + "\"?", ingredientUnit(pick.ingredient), invalidIngredientUnitOptions(c, pick.recipe, ingredientUnit(pick.ingredient), rule, 3), rule);
+        String correct = ingredientUnit(pick.ingredient);
+        AnswerRule rule = option -> equivalentOption(option, correct);
+        return question(id, level, "Qual par ingrediente + unidade representa corretamente \"" + pick.ingredient.name + "\" em \"" + pick.recipe.name + "\"?", correct, invalidIngredientUnitOptions(c, pick.recipe, correct, rule, 3), rule);
     }
 
     private static Question ingredientCount(ContextData c, int id, int level, Random r) {
@@ -280,15 +282,19 @@ final class QuizEngine {
     }
 
     private static Question baseIngredient(ContextData c, int id, int level, Random r) {
-        IngredientPick pick = pickIngredient(c, i -> hasCategoryWord(i, "base") || hasCategoryWord(i, "principal") || hasCategoryWord(i, "proteina"), r);
-        if (pick == null) return null;
-        return question(id, level, "Qual ingrediente faz parte da base principal de \"" + pick.recipe.name + "\"?", pick.ingredient.name, ingredientDistractors(c, pick.recipe, pick.ingredient, 3), option -> {
-            String name = optionName(option);
-            for (IngredientData item : pick.recipe.ingredients) {
-                if (norm(item.name).equals(norm(name)) && (hasCategoryWord(item, "base") || hasCategoryWord(item, "principal") || hasCategoryWord(item, "proteina"))) return true;
+        for (RecipeData recipe : shuffled(c.recipes, r)) {
+            ArrayList<IngredientData> candidates = new ArrayList<>();
+            for (IngredientData item : recipe.ingredients) {
+                if ((hasCategoryWord(item, "base") || hasCategoryWord(item, "principal") || hasCategoryWord(item, "proteina")) && countCategory(recipe, item.category) == 1) {
+                    candidates.add(item);
+                }
             }
-            return false;
-        });
+            IngredientData correct = any(candidates, r);
+            if (correct != null) {
+                return question(id, level, "Qual ingrediente esta sozinho na categoria \"" + correct.category + "\" em \"" + recipe.name + "\"?", correct.name, ingredientDistractors(c, recipe, correct, 3), option -> norm(optionName(option)).equals(norm(correct.name)));
+            }
+        }
+        return null;
     }
 
     private static Question complementaryIngredient(ContextData c, int id, int level, Random r) {
@@ -323,8 +329,9 @@ final class QuizEngine {
     private static Question fullQuantityUnitCombo(ContextData c, int id, int level, Random r) {
         IngredientPick pick = pickIngredient(c, i -> i.hasQuantity() && i.hasMeasuredUnit(), r);
         if (pick == null) return null;
-        AnswerRule rule = ingredientQuantityUnitRule(pick.recipe);
-        return question(id, level, "Qual alternativa representa corretamente ingrediente + quantidade + unidade em \"" + pick.recipe.name + "\"?", ingredientQuantityUnit(pick.ingredient), invalidIngredientQuantityUnitOptions(c, pick.recipe, ingredientQuantityUnit(pick.ingredient), rule, 3), rule);
+        String correct = ingredientQuantityUnit(pick.ingredient);
+        AnswerRule rule = option -> equivalentOption(option, correct);
+        return question(id, level, "Qual alternativa representa corretamente ingrediente + quantidade + unidade para \"" + pick.ingredient.name + "\" em \"" + pick.recipe.name + "\"?", correct, invalidIngredientQuantityUnitOptions(c, pick.recipe, correct, rule, 3), rule);
     }
 
     private static Question ingredientOnlyInFirst(ContextData c, int id, int level, Random r) {
@@ -559,7 +566,7 @@ final class QuizEngine {
                 ArrayList<IngredientData> mentioned = ingredientsInStep(recipe, step);
                 if (mentioned.size() >= 2) {
                     String correct = mentioned.get(0).name + " + " + mentioned.get(1).name;
-                    return question(id, level, "Qual dupla aparece junta nesta etapa de \"" + recipe.name + "\": \"" + shortText(step) + "\"?", correct, pairDistractors(c, recipe, correct, 3));
+                    return question(id, level, "Qual dupla aparece junta nesta etapa de \"" + recipe.name + "\": \"" + shortText(step) + "\"?", correct, invalidStepPairDistractors(c, mentioned, correct, 3), option -> pairAllInMentioned(mentioned, option));
                 }
             }
         }
@@ -949,7 +956,7 @@ final class QuizEngine {
             for (String step : recipe.steps) {
                 for (String word : words) {
                     if (norm(step).contains(norm(word))) {
-                        return question(id, level, prompt, step, stepDistractors(c, recipe, step, 3));
+                        return question(id, level, prompt, step, stepWordDistractors(c, recipe, step, words, 3), option -> stepHasAnyWord(option, words));
                     }
                 }
             }
@@ -1094,6 +1101,17 @@ final class QuizEngine {
         return recipeHasIngredient(recipe, parts.get(0)) && recipeHasIngredient(recipe, parts.get(1));
     }
 
+    private static boolean pairAllInMentioned(List<IngredientData> mentioned, String pair) {
+        ArrayList<String> parts = pairParts(pair);
+        if (parts.size() != 2) return false;
+        return ingredientListHas(mentioned, parts.get(0)) && ingredientListHas(mentioned, parts.get(1));
+    }
+
+    private static boolean ingredientListHas(List<IngredientData> ingredients, String name) {
+        for (IngredientData item : ingredients) if (norm(item.name).equals(norm(name))) return true;
+        return false;
+    }
+
     private static ArrayList<String> pairParts(String pair) {
         ArrayList<String> parts = new ArrayList<>();
         if (pair == null) return parts;
@@ -1160,6 +1178,36 @@ final class QuizEngine {
         for (IngredientData item : c.allIngredients) addInvalidOption(out, quantityIngredient(item), correct, rule);
         for (IngredientData item : recipe.ingredients) if (item.hasQuantity()) addInvalidOption(out, nearbyQuantity(item) + " - " + item.name, correct, rule);
         return firstWithout(out, correct, count);
+    }
+
+    private static ArrayList<String> invalidStepPairDistractors(ContextData c, List<IngredientData> mentioned, String correct, int count) {
+        ArrayList<String> out = new ArrayList<>();
+        for (RecipeData recipe : c.recipes) {
+            for (String pair : pairs(recipe.ingredients)) {
+                if (!pairAllInMentioned(mentioned, pair)) addUnique(out, pair);
+            }
+        }
+        for (IngredientData a : mentioned) {
+            for (IngredientData b : c.allIngredients) {
+                if (!ingredientListHas(mentioned, b.name)) addUnique(out, a.name + " + " + b.name);
+            }
+        }
+        return firstWithout(out, correct, count);
+    }
+
+    private static ArrayList<String> stepWordDistractors(ContextData c, RecipeData recipe, String correct, String[] words, int count) {
+        ArrayList<String> out = new ArrayList<>();
+        for (String step : recipe.steps) if (!stepHasAnyWord(step, words)) addUnique(out, step);
+        for (RecipeData other : c.recipes) {
+            if (other.id == recipe.id) continue;
+            for (String step : other.steps) if (!stepHasAnyWord(step, words)) addUnique(out, step);
+        }
+        return firstWithout(out, correct, count);
+    }
+
+    private static boolean stepHasAnyWord(String step, String[] words) {
+        for (String word : words) if (norm(step).contains(norm(word))) return true;
+        return false;
     }
 
     private static ArrayList<String> invalidIngredientUnitOptions(ContextData c, RecipeData recipe, String correct, AnswerRule rule, int count) {

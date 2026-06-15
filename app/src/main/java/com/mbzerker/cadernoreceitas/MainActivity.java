@@ -92,6 +92,9 @@ public class MainActivity extends Activity {
     private Runnable quizTick;
     private Runnable quizPendingGameOver;
     private TimeCircleView quizTimerView;
+    private ImageButton updateButton;
+    private AnimatorSet updatePulse;
+    private boolean updateAvailable;
     private final ArrayList<View> quizAnimatedViews = new ArrayList<>();
     private final ArrayList<TextView> quizOptionViews = new ArrayList<>();
     private int quizIndex;
@@ -170,6 +173,8 @@ public class MainActivity extends Activity {
     private void showHome() {
         screen = "home";
         currentCadernoId = 0;
+        stopUpdateSignal();
+        updateButton = null;
         base(R.drawable.bg_principal);
 
         LinearLayout logoFrame = logoCard();
@@ -186,7 +191,8 @@ public class MainActivity extends Activity {
         LinearLayout row = iconStrip();
         addWeightedStripIcon(row, R.drawable.ic_plus, RED, "Novo caderno", v -> newCaderno());
         addWeightedStripIcon(row, R.drawable.ic_share_nodes, RED_DARK, "Compartilhar app", v -> shareApp());
-        addWeightedStripIcon(row, R.drawable.ic_update, GOLD, "Atualizar", v -> checkUpdate());
+        updateButton = addWeightedStripIcon(row, R.drawable.ic_update, updateAvailable ? RED_DARK : GOLD, "Atualizar", v -> checkUpdate());
+        if (updateAvailable) startUpdateSignal();
         actions.addView(row, actionStripParams());
         root.addView(actions);
 
@@ -195,6 +201,7 @@ public class MainActivity extends Activity {
         listArea.setOrientation(LinearLayout.VERTICAL);
         root.addView(listArea);
         renderHomeList();
+        checkUpdateSilently();
     }
 
     private void renderHomeList() {
@@ -2236,14 +2243,18 @@ public class MainActivity extends Activity {
         qtdNumero.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
         AutoCompleteTextView qtdUnidade = unitEntry(item == null ? "un" : parseQuantityUnit(item.desc));
         AutoCompleteTextView cat = autoEntry(categoryHintFor(""), db.ingredientCategories());
+        final boolean[] categoryLocked = {false};
+        final String[] lockedCategory = {""};
         if (item != null) {
             nome.setText(item.name);
             qtdNumero.setText(parseQuantityNumber(item.desc));
             cat.setText(item.extra);
         }
+        updateKnownCategoryLock(nome, cat, categoryLocked, lockedCategory);
         nome.addTextChangedListener(new SimpleWatcher() {
             public void afterTextChanged(Editable s) {
-                if (text(cat).isEmpty()) cat.setHint(categoryHintFor(text(nome)));
+                updateKnownCategoryLock(nome, cat, categoryLocked, lockedCategory);
+                if (!categoryLocked[0] && text(cat).isEmpty()) cat.setHint(categoryHintFor(text(nome)));
             }
         });
         box.addView(nome);
@@ -2275,17 +2286,61 @@ public class MainActivity extends Activity {
                 int remote = json.optInt("versionCode", 0);
                 String version = json.optString("versionName", "");
                 if (remote <= BuildConfig.VERSION_CODE) {
-                    ui(() -> { dialog.dismiss(); toast("Sem atualizacao disponivel."); });
+                    ui(() -> { dialog.dismiss(); setUpdateAvailable(false); toast("Sem atualizacao disponivel."); });
                     return;
                 }
                 ui(() -> {
                     dialog.dismiss();
+                    setUpdateAvailable(true);
                     confirm("Atualizacao disponivel", "Baixar versao " + version + " agora?", () -> downloadApk(json));
                 });
             } catch (Exception e) {
                 ui(() -> { dialog.dismiss(); toast("Falha ao verificar atualizacao."); });
             }
         }).start();
+    }
+
+    private void checkUpdateSilently() {
+        new Thread(() -> {
+            try {
+                JSONObject json = new JSONObject(readUrl(UPDATE_URL));
+                boolean available = json.optInt("versionCode", 0) > BuildConfig.VERSION_CODE;
+                ui(() -> setUpdateAvailable(available));
+            } catch (Exception ignored) {
+            }
+        }).start();
+    }
+
+    private void setUpdateAvailable(boolean available) {
+        updateAvailable = available;
+        if (updateButton == null) return;
+        updateButton.setColorFilter(available ? RED_DARK : GOLD);
+        if (available) startUpdateSignal();
+        else stopUpdateSignal();
+    }
+
+    private void startUpdateSignal() {
+        if (updateButton == null || updatePulse != null) return;
+        ObjectAnimator pulseX = ObjectAnimator.ofFloat(updateButton, "scaleX", 1f, 1.18f, 1f);
+        pulseX.setDuration(850);
+        pulseX.setRepeatCount(ValueAnimator.INFINITE);
+        ObjectAnimator pulseY = ObjectAnimator.ofFloat(updateButton, "scaleY", 1f, 1.18f, 1f);
+        pulseY.setDuration(850);
+        pulseY.setRepeatCount(ValueAnimator.INFINITE);
+        updatePulse = new AnimatorSet();
+        updatePulse.playTogether(pulseX, pulseY);
+        updatePulse.start();
+    }
+
+    private void stopUpdateSignal() {
+        if (updatePulse != null) {
+            updatePulse.cancel();
+            updatePulse = null;
+        }
+        if (updateButton != null) {
+            updateButton.setScaleX(1f);
+            updateButton.setScaleY(1f);
+        }
     }
 
     private void downloadApk(JSONObject manifest) {
@@ -2366,7 +2421,10 @@ public class MainActivity extends Activity {
 
     private void scheduleIngredientHighlight(View card) {
         card.postDelayed(() -> {
-            if (contentScroll != null) contentScroll.smoothScrollTo(0, Math.max(0, card.getTop() - dp(90)));
+            if (contentScroll != null) {
+                int target = absoluteTopInsideScroll(card);
+                contentScroll.smoothScrollTo(0, Math.max(0, target - dp(150)));
+            }
             ObjectAnimator fadeOut = ObjectAnimator.ofFloat(card, "alpha", 1f, 0.48f);
             fadeOut.setDuration(170);
             ObjectAnimator fadeIn = ObjectAnimator.ofFloat(card, "alpha", 0.48f, 1f);
@@ -2375,6 +2433,19 @@ public class MainActivity extends Activity {
             blink.playSequentially(fadeOut, fadeIn, fadeOut.clone(), fadeIn.clone());
             blink.start();
         }, 260);
+    }
+
+    private int absoluteTopInsideScroll(View child) {
+        if (contentScroll == null || contentScroll.getChildCount() == 0) return child.getTop();
+        int top = child.getTop();
+        View targetRoot = contentScroll.getChildAt(0);
+        ViewParent parent = child.getParent();
+        while (parent instanceof View && parent != targetRoot) {
+            View parentView = (View) parent;
+            top += parentView.getTop();
+            parent = parentView.getParent();
+        }
+        return top;
     }
 
     private LinearLayout headerInline(String title, Runnable back) {
@@ -3136,6 +3207,26 @@ public class MainActivity extends Activity {
 
     private String suggestedCategoryFor(String ingredientName) {
         return db.categoryForIngredient(ingredientName);
+    }
+
+    private void updateKnownCategoryLock(AutoCompleteTextView nome, AutoCompleteTextView cat, boolean[] locked, String[] lockedValue) {
+        String known = suggestedCategoryFor(text(nome));
+        if (!known.isEmpty()) {
+            locked[0] = true;
+            lockedValue[0] = known;
+            if (!text(cat).equals(known)) cat.setText(known, false);
+            cat.setEnabled(false);
+            cat.setFocusable(false);
+            cat.setAlpha(0.82f);
+            cat.setHint("Categoria ja cadastrada");
+            return;
+        }
+        if (locked[0] && text(cat).equals(lockedValue[0])) cat.setText("", false);
+        locked[0] = false;
+        lockedValue[0] = "";
+        cat.setEnabled(true);
+        cat.setFocusableInTouchMode(true);
+        cat.setAlpha(1f);
     }
 
     private String buildQuantity(String number, String unit) {
