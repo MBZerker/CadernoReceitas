@@ -77,6 +77,10 @@ public class MainActivity extends Activity {
     private static final String QUIZ_MODE_DESAFIO = "Desafio";
     private static final int QUIZ_PROVA_MAX_ERROS = 5;
     private static final int REQUEST_RECORD_AUDIO = 607;
+    private static final int ORAL_QUESTION_INGREDIENTS = 0;
+    private static final int ORAL_QUESTION_CATEGORY = 1;
+    private static final int ORAL_QUESTION_UNIT = 2;
+    private static final int ORAL_QUESTION_LINKED_RECIPE = 3;
     private static final int RED = Color.rgb(184, 50, 22);
     private static final int RED_DARK = Color.rgb(127, 29, 18);
     private static final int GOLD = Color.rgb(217, 154, 59);
@@ -106,9 +110,13 @@ public class MainActivity extends Activity {
     private boolean oralTtsReady;
     private boolean oralListening;
     private boolean oralFinished;
+    private int oralQuestionType;
+    private String oralPrompt = "";
+    private String oralExpectedAnswer = "";
     private Item oralRecipe;
     private final ArrayList<Item> oralIngredients = new ArrayList<>();
     private final LinkedHashSet<Integer> oralFoundIds = new LinkedHashSet<>();
+    private final LinkedHashSet<Integer> oralAttemptFoundIds = new LinkedHashSet<>();
     private TextView oralStatus;
     private TextView oralTranscript;
     private LinearLayout oralIngredientList;
@@ -582,7 +590,9 @@ public class MainActivity extends Activity {
         oralIngredients.clear();
         oralIngredients.addAll(db.ingredientes(oralRecipe.id, ""));
         oralFoundIds.clear();
+        oralAttemptFoundIds.clear();
         oralFinished = false;
+        chooseOralQuestion();
         ensureOralTts();
 
         screen = "oral_test";
@@ -595,12 +605,12 @@ public class MainActivity extends Activity {
         root.addView(top);
 
         LinearLayout question = card();
-        TextView questionTitle = label("Quais os ingredientes de", 17, MUTED, false);
+        TextView questionTitle = label(oralQuestionType == ORAL_QUESTION_INGREDIENTS ? "Quais os ingredientes de" : "Responda em voz alta", 17, MUTED, false);
         questionTitle.setGravity(Gravity.CENTER);
         question.addView(questionTitle);
-        TextView recipeName = label(oralRecipe.name, 25, RED, true);
-        recipeName.setGravity(Gravity.CENTER);
-        question.addView(recipeName, matchWrapWithTop(dp(5)));
+        TextView prompt = label(oralPrompt, 23, RED, true);
+        prompt.setGravity(Gravity.CENTER);
+        question.addView(prompt, matchWrapWithTop(dp(5)));
         oralStatus = label("Toque no microfone e responda.", 15, GREEN, true);
         oralStatus.setGravity(Gravity.CENTER);
         question.addView(oralStatus, matchWrapWithTop(dp(10)));
@@ -618,7 +628,41 @@ public class MainActivity extends Activity {
         oralIngredientList.setOrientation(LinearLayout.VERTICAL);
         root.addView(oralIngredientList, matchWrapWithTop(dp(4)));
         refreshOralProgress();
-        speakOral("Quais os ingredientes de " + oralRecipe.name + "?");
+        speakOral(oralPrompt);
+    }
+
+    private void chooseOralQuestion() {
+        ArrayList<Integer> types = new ArrayList<>();
+        types.add(ORAL_QUESTION_INGREDIENTS);
+        ArrayList<Item> categorized = new ArrayList<>();
+        ArrayList<Item> measured = new ArrayList<>();
+        ArrayList<Item> linked = new ArrayList<>();
+        for (Item ingredient : oralIngredients) {
+            if (!ingredient.extra.trim().isEmpty()) categorized.add(ingredient);
+            if (!parseQuantityUnit(ingredient.desc).equals("un") && !ingredient.desc.trim().isEmpty()) measured.add(ingredient);
+            if (ingredient.recipeLinkId > 0) linked.add(ingredient);
+        }
+        if (!categorized.isEmpty()) types.add(ORAL_QUESTION_CATEGORY);
+        if (!measured.isEmpty()) types.add(ORAL_QUESTION_UNIT);
+        if (!linked.isEmpty()) types.add(ORAL_QUESTION_LINKED_RECIPE);
+        Collections.shuffle(types);
+        oralQuestionType = types.get(0);
+        oralExpectedAnswer = "";
+        if (oralQuestionType == ORAL_QUESTION_CATEGORY) {
+            Item item = categorized.get(new Random().nextInt(categorized.size()));
+            oralPrompt = "A qual categoria pertence " + item.name + " em " + oralRecipe.name + "?";
+            oralExpectedAnswer = item.extra;
+        } else if (oralQuestionType == ORAL_QUESTION_UNIT) {
+            Item item = measured.get(new Random().nextInt(measured.size()));
+            oralPrompt = "Qual unidade acompanha " + item.name + " em " + oralRecipe.name + "?";
+            oralExpectedAnswer = displayUnit(parseQuantityUnit(item.desc));
+        } else if (oralQuestionType == ORAL_QUESTION_LINKED_RECIPE) {
+            Item item = linked.get(new Random().nextInt(linked.size()));
+            oralPrompt = "Qual receita preparada corresponde ao ingrediente " + item.name + " em " + oralRecipe.name + "?";
+            oralExpectedAnswer = db.getReceita(item.recipeLinkId).name;
+        } else {
+            oralPrompt = "Quais os ingredientes de " + oralRecipe.name + "?";
+        }
     }
 
     private void ensureOralTts() {
@@ -635,7 +679,7 @@ public class MainActivity extends Activity {
             if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
                 toast("A voz em portugues do Android nao esta instalada.");
             } else if ("oral_test".equals(screen) && oralRecipe != null) {
-                speakOral("Quais os ingredientes de " + oralRecipe.name + "?");
+                speakOral(oralPrompt);
             }
         });
     }
@@ -659,7 +703,8 @@ public class MainActivity extends Activity {
         if (oralRecognizer == null) return;
         oralTts.stop();
         oralListening = true;
-        oralStatus.setText("Ouvindo... fale os ingredientes.");
+        oralAttemptFoundIds.clear();
+        oralStatus.setText(oralQuestionType == ORAL_QUESTION_INGREDIENTS ? "Ouvindo... fale os ingredientes." : "Ouvindo... fale sua resposta.");
         oralMicButton.setColorFilter(RED_DARK);
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
@@ -704,8 +749,15 @@ public class MainActivity extends Activity {
     private void processOralTranscript(String transcript, boolean finalResult) {
         if (!"oral_test".equals(screen) || oralRecipe == null) return;
         oralTranscript.setText("Voce disse: " + transcript);
+        if (oralQuestionType != ORAL_QUESTION_INGREDIENTS) {
+            processSingleOralAnswer(transcript, finalResult);
+            return;
+        }
         for (Item ingredient : oralIngredients) {
-            if (oralIngredientMentioned(transcript, ingredient.name)) oralFoundIds.add(ingredient.id);
+            if (oralIngredientMentioned(transcript, ingredient.name)) {
+                oralFoundIds.add(ingredient.id);
+                oralAttemptFoundIds.add(ingredient.id);
+            }
         }
         refreshOralProgress();
         if (!finalResult) return;
@@ -719,15 +771,48 @@ public class MainActivity extends Activity {
             finishOralTest();
             return;
         }
-        boolean hasAnyRecognized = !oralFoundIds.isEmpty();
-        oralStatus.setText(hasAnyRecognized ? "Certo. Falta mais algum ingrediente?" : "Ainda nao reconheci um ingrediente. Tente novamente.");
-        speakOral(hasAnyRecognized ? "Certo. Falta mais algum ingrediente?" : "Ainda nao reconheci um ingrediente. Tente novamente.");
+        boolean recognizedThisAttempt = !oralAttemptFoundIds.isEmpty();
+        oralStatus.setText(recognizedThisAttempt ? "Certo. Falta mais algum ingrediente?" : "Ainda nao esta correto. Tente novamente.");
+        speakOral(recognizedThisAttempt ? "Certo. Falta mais algum ingrediente?" : "Ainda nao esta correto. Tente novamente.");
+    }
+
+    private void processSingleOralAnswer(String transcript, boolean finalResult) {
+        if (!finalResult) return;
+        oralListening = false;
+        refreshOralMic();
+        if (oralTextRelevant(transcript, oralExpectedAnswer)) {
+            oralFinished = true;
+            oralStatus.setText("Muito bem! Resposta correta.");
+            oralMicButton.setEnabled(false);
+            speakOral("Muito bem! Resposta correta.");
+            return;
+        }
+        if (oralSaysFinish(transcript)) {
+            finishOralTest();
+            return;
+        }
+        oralStatus.setText("Ainda nao esta correto. Tente novamente.");
+        speakOral("Ainda nao esta correto. Tente novamente.");
     }
 
     private boolean oralIngredientMentioned(String transcript, String ingredient) {
+        return oralTextRelevant(transcript, ingredient);
+    }
+
+    private boolean oralTextRelevant(String transcript, String expected) {
         String spoken = cleanOralText(transcript);
-        String expected = cleanOralText(ingredient);
-        return !expected.isEmpty() && (" " + spoken + " ").contains(" " + expected + " ");
+        String target = cleanOralText(expected);
+        if (spoken.isEmpty() || target.isEmpty()) return false;
+        if ((" " + spoken + " ").contains(" " + target + " ")) return true;
+        ArrayList<String> meaningful = new ArrayList<>();
+        for (String token : target.split(" ")) {
+            if (token.length() >= 3 && !token.equals("com") && !token.equals("sem") && !token.equals("para")) addUnique(meaningful, token);
+        }
+        if (meaningful.isEmpty()) return false;
+        int matched = 0;
+        for (String token : meaningful) if ((" " + spoken + " ").contains(" " + token + " ")) matched++;
+        if (meaningful.size() == 1) return matched == 1;
+        return matched >= 2 && (matched / (float) meaningful.size()) >= 0.66f;
     }
 
     private String cleanOralText(String value) {
@@ -742,6 +827,12 @@ public class MainActivity extends Activity {
     private void refreshOralProgress() {
         if (oralStatus == null || oralIngredientList == null) return;
         oralIngredientList.removeAllViews();
+        if (oralQuestionType != ORAL_QUESTION_INGREDIENTS) {
+            TextView hint = label("Responda usando o microfone. Se nao lembrar, use a seta para revelar a resposta.", 15, MUTED, false);
+            hint.setGravity(Gravity.CENTER);
+            oralIngredientList.addView(hint, matchWrapWithTop(dp(4)));
+            return;
+        }
         TextView count = label("Reconhecidos: " + oralFoundIds.size() + " de " + oralIngredients.size(), 16, oralFoundIds.isEmpty() ? MUTED : GREEN, true);
         count.setGravity(Gravity.CENTER);
         oralIngredientList.addView(count, matchWrapWithTop(dp(4)));
@@ -766,6 +857,13 @@ public class MainActivity extends Activity {
         if (!"oral_test".equals(screen) || oralRecipe == null) return;
         stopOralCapture();
         oralFinished = true;
+        if (oralQuestionType != ORAL_QUESTION_INGREDIENTS) {
+            oralStatus.setText("Resposta correta: " + oralExpectedAnswer + ". Tudo bem: revisar tambem faz parte do estudo.");
+            oralTranscript.setText("Resposta correta: " + oralExpectedAnswer);
+            speakOral("A resposta correta e " + oralExpectedAnswer + ". Tudo bem. Revisar tambem faz parte do estudo.");
+            oralMicButton.setEnabled(false);
+            return;
+        }
         ArrayList<String> missing = new ArrayList<>();
         for (Item ingredient : oralIngredients) if (!oralFoundIds.contains(ingredient.id)) missing.add(ingredient.name);
         if (missing.isEmpty()) {
