@@ -1,11 +1,13 @@
 package com.mbzerker.cadernoreceitas;
 
+import android.Manifest;
 import android.app.*;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.os.*;
 import android.content.*;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.database.sqlite.*;
 import android.graphics.Bitmap;
@@ -23,10 +25,15 @@ import android.print.PrintAttributes;
 import android.print.PrintDocumentAdapter;
 import android.print.PrintManager;
 import android.provider.Settings;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
+import android.speech.tts.TextToSpeech;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.SpannableString;
 import android.text.Spanned;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.StyleSpan;
@@ -69,6 +76,7 @@ public class MainActivity extends Activity {
     private static final String QUIZ_MODE_PROVA = "Prova";
     private static final String QUIZ_MODE_DESAFIO = "Desafio";
     private static final int QUIZ_PROVA_MAX_ERROS = 5;
+    private static final int REQUEST_RECORD_AUDIO = 607;
     private static final int RED = Color.rgb(184, 50, 22);
     private static final int RED_DARK = Color.rgb(127, 29, 18);
     private static final int GOLD = Color.rgb(217, 154, 59);
@@ -79,6 +87,7 @@ public class MainActivity extends Activity {
     private static final int CARD_STRONG = Color.argb(242, 255, 247, 237);
     private static final int LINE = Color.rgb(232, 201, 142);
     private static final int LINK = Color.rgb(53, 99, 199);
+    private static final int GREEN = Color.rgb(49, 119, 71);
 
     private Db db;
     private LinearLayout root;
@@ -92,6 +101,18 @@ public class MainActivity extends Activity {
     private Runnable quizTick;
     private Runnable quizPendingGameOver;
     private TimeCircleView quizTimerView;
+    private TextToSpeech oralTts;
+    private SpeechRecognizer oralRecognizer;
+    private boolean oralTtsReady;
+    private boolean oralListening;
+    private boolean oralFinished;
+    private Item oralRecipe;
+    private final ArrayList<Item> oralIngredients = new ArrayList<>();
+    private final LinkedHashSet<Integer> oralFoundIds = new LinkedHashSet<>();
+    private TextView oralStatus;
+    private TextView oralTranscript;
+    private LinearLayout oralIngredientList;
+    private ImageButton oralMicButton;
     private ImageButton updateButton;
     private AnimatorSet updatePulse;
     private boolean updateAvailable;
@@ -149,6 +170,7 @@ public class MainActivity extends Activity {
 
     private void base(int background) {
         stopQuizTimer();
+        stopOralCapture();
         configureSystemBars();
         FrameLayout frame = new FrameLayout(this);
         ImageView bg = new ImageView(this);
@@ -232,7 +254,7 @@ public class MainActivity extends Activity {
         LinearLayout cadernoActions = iconStrip();
         addWeightedStripIcon(cadernoActions, R.drawable.ic_plus, RED, "Adicionar tipo de receitas", v -> newCategoria());
         addWeightedStripIcon(cadernoActions, R.drawable.ic_clipboard_list, GOLD, "Ingredientes cadastrados", v -> showIngredientesCaderno());
-        addWeightedStripIcon(cadernoActions, R.drawable.ic_report, RED_DARK, "Teste", v -> askStartQuiz());
+        addWeightedStripIcon(cadernoActions, R.drawable.ic_joystick, RED_DARK, "Jogos", v -> showGameSelection());
         addWeightedStripIcon(cadernoActions, R.drawable.ic_share_nodes, RED, "Compartilhar caderno", v -> shareCaderno(currentCadernoId));
         add.addView(cadernoActions, actionStripParams());
         root.addView(add);
@@ -414,6 +436,40 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void showGameSelection() {
+        screen = "games";
+        base(R.drawable.bg_quiz);
+        LinearLayout top = card();
+        top.addView(headerInline("Jogos", () -> showCaderno(currentCadernoId)));
+        TextView lead = label("Escolha como quer estudar este caderno.", 16, MUTED, false);
+        lead.setGravity(Gravity.CENTER);
+        top.addView(lead, matchWrapWithTop(dp(4)));
+        root.addView(top);
+
+        root.addView(gameChoiceCard(R.drawable.ic_joystick, "Quiz", "Perguntas de multipla escolha com modos Prova, Treino e Desafio.", RED_DARK, this::askStartQuiz));
+        root.addView(gameChoiceCard(R.drawable.ic_mic, "Teste Oral", "Fale os ingredientes da receita. O app marca o que reconhecer e avisa o que faltar.", GOLD, this::showOralTest));
+    }
+
+    private LinearLayout gameChoiceCard(int icon, String title, String subtitle, int color, Runnable action) {
+        LinearLayout box = card();
+        box.setPadding(dp(14), dp(14), dp(14), dp(14));
+        LinearLayout row = hrow();
+        row.addView(frameIcon(icon, color, dp(48)), new LinearLayout.LayoutParams(dp(58), dp(66)));
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        text.addView(label(title, 21, color, true));
+        text.addView(label(subtitle, 14, MUTED, false), matchWrapWithTop(dp(4)));
+        row.addView(text, new LinearLayout.LayoutParams(0, -2, 1));
+        ImageButton go = imageIconButton(R.drawable.ic_arrow_right, color, Color.WHITE);
+        go.setContentDescription("Abrir " + title);
+        row.addView(go, new LinearLayout.LayoutParams(dp(54), dp(54)));
+        box.addView(row);
+        View.OnClickListener click = v -> action.run();
+        box.setOnClickListener(click);
+        go.setOnClickListener(click);
+        return box;
+    }
+
     private void askStartQuiz() {
         int total = db.countReceitasCaderno(currentCadernoId);
         if (total < 5) {
@@ -427,7 +483,7 @@ public class MainActivity extends Activity {
         screen = "quiz_modes";
         base(R.drawable.bg_quiz);
         LinearLayout top = card();
-        top.addView(headerInline("Escolha o teste", () -> showCaderno(currentCadernoId)));
+        top.addView(headerInline("Escolha o modo", this::showGameSelection));
         TextView lead = label("Selecione como quer estudar este caderno.", 16, MUTED, false);
         lead.setGravity(Gravity.CENTER);
         top.addView(lead, matchWrapWithTop(dp(4)));
@@ -442,7 +498,7 @@ public class MainActivity extends Activity {
         LinearLayout box = card();
         box.setPadding(dp(14), dp(14), dp(14), dp(14));
         LinearLayout row = hrow();
-        row.addView(frameIcon(R.drawable.ic_report, color, dp(48)), new LinearLayout.LayoutParams(dp(58), dp(66)));
+        row.addView(frameIcon(R.drawable.ic_joystick, color, dp(48)), new LinearLayout.LayoutParams(dp(58), dp(66)));
         LinearLayout text = new LinearLayout(this);
         text.setOrientation(LinearLayout.VERTICAL);
         TextView titleView = label(title, 21, color, true);
@@ -508,6 +564,229 @@ public class MainActivity extends Activity {
         box.addView(hint);
         root.addView(box);
         root.postDelayed(next, 120);
+    }
+
+    private void showOralTest() {
+        ArrayList<Item> available = new ArrayList<>();
+        for (Item recipe : db.receitasCaderno(currentCadernoId)) {
+            if (!db.ingredientes(recipe.id, "").isEmpty()) available.add(recipe);
+        }
+        if (available.isEmpty()) {
+            showThemed(themedDialog("Teste Oral bloqueado", null)
+                .setMessage("Cadastre pelo menos uma receita com ingredientes para usar o teste oral.")
+                .setPositiveButton("Entendi", (d, w) -> showGameSelection()));
+            return;
+        }
+        Collections.shuffle(available);
+        oralRecipe = available.get(0);
+        oralIngredients.clear();
+        oralIngredients.addAll(db.ingredientes(oralRecipe.id, ""));
+        oralFoundIds.clear();
+        oralFinished = false;
+        ensureOralTts();
+
+        screen = "oral_test";
+        base(R.drawable.bg_quiz);
+        LinearLayout top = card();
+        top.addView(headerInline("Teste Oral", this::showGameSelection));
+        TextView lead = label("Fale os ingredientes da receita. O app vai marcar cada item reconhecido.", 15, MUTED, false);
+        lead.setGravity(Gravity.CENTER);
+        top.addView(lead, matchWrapWithTop(dp(4)));
+        root.addView(top);
+
+        LinearLayout question = card();
+        TextView questionTitle = label("Quais os ingredientes de", 17, MUTED, false);
+        questionTitle.setGravity(Gravity.CENTER);
+        question.addView(questionTitle);
+        TextView recipeName = label(oralRecipe.name, 25, RED, true);
+        recipeName.setGravity(Gravity.CENTER);
+        question.addView(recipeName, matchWrapWithTop(dp(5)));
+        oralStatus = label("Toque no microfone e responda.", 15, GREEN, true);
+        oralStatus.setGravity(Gravity.CENTER);
+        question.addView(oralStatus, matchWrapWithTop(dp(10)));
+        root.addView(question);
+
+        LinearLayout controls = iconStrip();
+        oralMicButton = addWeightedStripIcon(controls, R.drawable.ic_mic, RED, "Responder por voz", v -> beginOralListening());
+        addWeightedStripIcon(controls, R.drawable.ic_arrow_right, GOLD, "Nao lembro mais", v -> finishOralTest());
+        root.addView(controls, actionStripParams());
+
+        oralTranscript = label("", 15, MUTED, false);
+        oralTranscript.setGravity(Gravity.CENTER);
+        root.addView(oralTranscript, matchWrapWithTop(dp(12)));
+        oralIngredientList = new LinearLayout(this);
+        oralIngredientList.setOrientation(LinearLayout.VERTICAL);
+        root.addView(oralIngredientList, matchWrapWithTop(dp(4)));
+        refreshOralProgress();
+        speakOral("Quais os ingredientes de " + oralRecipe.name + "?");
+    }
+
+    private void ensureOralTts() {
+        if (oralTts != null) return;
+        oralTts = new TextToSpeech(this, status -> {
+            oralTtsReady = status == TextToSpeech.SUCCESS;
+            if (!oralTtsReady) {
+                toast("A leitura em voz alta nao esta disponivel neste aparelho.");
+                return;
+            }
+            int language = oralTts.setLanguage(new Locale("pt", "BR"));
+            oralTts.setPitch(0.95f);
+            oralTts.setSpeechRate(0.92f);
+            if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
+                toast("A voz em portugues do Android nao esta instalada.");
+            } else if ("oral_test".equals(screen) && oralRecipe != null) {
+                speakOral("Quais os ingredientes de " + oralRecipe.name + "?");
+            }
+        });
+    }
+
+    private void speakOral(String message) {
+        if (!oralTtsReady || oralTts == null || message == null || message.trim().isEmpty()) return;
+        oralTts.speak(message, TextToSpeech.QUEUE_FLUSH, null, "oral-test");
+    }
+
+    private void beginOralListening() {
+        if (!"oral_test".equals(screen) || oralRecipe == null || oralFinished) return;
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            toast("O reconhecimento de voz nao esta disponivel neste aparelho.");
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQUEST_RECORD_AUDIO);
+            return;
+        }
+        ensureOralRecognizer();
+        if (oralRecognizer == null) return;
+        oralTts.stop();
+        oralListening = true;
+        oralStatus.setText("Ouvindo... fale os ingredientes.");
+        oralMicButton.setColorFilter(RED_DARK);
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR");
+        intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+        intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+        oralRecognizer.startListening(intent);
+    }
+
+    private void ensureOralRecognizer() {
+        if (oralRecognizer != null) return;
+        oralRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+        oralRecognizer.setRecognitionListener(new RecognitionListener() {
+            public void onReadyForSpeech(Bundle params) { }
+            public void onBeginningOfSpeech() { }
+            public void onRmsChanged(float rmsdB) { }
+            public void onBufferReceived(byte[] buffer) { }
+            public void onEndOfSpeech() { }
+            public void onError(int error) {
+                ui(() -> {
+                    if (!"oral_test".equals(screen) || oralFinished) return;
+                    oralListening = false;
+                    refreshOralMic();
+                    if (error != SpeechRecognizer.ERROR_NO_MATCH && error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                        oralStatus.setText("Nao foi possivel ouvir agora. Tente novamente.");
+                    }
+                });
+            }
+            public void onResults(Bundle results) { handleOralRecognition(results, true); }
+            public void onPartialResults(Bundle partialResults) { handleOralRecognition(partialResults, false); }
+            public void onEvent(int eventType, Bundle params) { }
+        });
+    }
+
+    private void handleOralRecognition(Bundle results, boolean finalResult) {
+        ArrayList<String> values = results == null ? null : results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+        if (values == null || values.isEmpty()) return;
+        String transcript = values.get(0);
+        ui(() -> processOralTranscript(transcript, finalResult));
+    }
+
+    private void processOralTranscript(String transcript, boolean finalResult) {
+        if (!"oral_test".equals(screen) || oralRecipe == null) return;
+        oralTranscript.setText("Voce disse: " + transcript);
+        for (Item ingredient : oralIngredients) {
+            if (oralIngredientMentioned(transcript, ingredient.name)) oralFoundIds.add(ingredient.id);
+        }
+        refreshOralProgress();
+        if (!finalResult) return;
+        oralListening = false;
+        refreshOralMic();
+        if (oralFoundIds.size() == oralIngredients.size()) {
+            finishOralTest();
+            return;
+        }
+        if (oralSaysFinish(transcript)) {
+            finishOralTest();
+            return;
+        }
+        boolean hasAnyRecognized = !oralFoundIds.isEmpty();
+        oralStatus.setText(hasAnyRecognized ? "Certo. Falta mais algum ingrediente?" : "Ainda nao reconheci um ingrediente. Tente novamente.");
+        speakOral(hasAnyRecognized ? "Certo. Falta mais algum ingrediente?" : "Ainda nao reconheci um ingrediente. Tente novamente.");
+    }
+
+    private boolean oralIngredientMentioned(String transcript, String ingredient) {
+        String spoken = cleanOralText(transcript);
+        String expected = cleanOralText(ingredient);
+        return !expected.isEmpty() && (" " + spoken + " ").contains(" " + expected + " ");
+    }
+
+    private String cleanOralText(String value) {
+        return norm(value).replaceAll("[^a-z0-9]+", " ").trim().replaceAll("\\s+", " ");
+    }
+
+    private boolean oralSaysFinish(String transcript) {
+        String spoken = cleanOralText(transcript);
+        return spoken.equals("nao") || spoken.equals("nao sei") || spoken.contains("nao lembro") || spoken.contains("so isso") || spoken.contains("e so") || spoken.contains("acabou") || spoken.contains("nenhum outro");
+    }
+
+    private void refreshOralProgress() {
+        if (oralStatus == null || oralIngredientList == null) return;
+        oralIngredientList.removeAllViews();
+        TextView count = label("Reconhecidos: " + oralFoundIds.size() + " de " + oralIngredients.size(), 16, oralFoundIds.isEmpty() ? MUTED : GREEN, true);
+        count.setGravity(Gravity.CENTER);
+        oralIngredientList.addView(count, matchWrapWithTop(dp(4)));
+        if (oralFoundIds.isEmpty()) return;
+        for (Item ingredient : oralIngredients) {
+            if (!oralFoundIds.contains(ingredient.id)) continue;
+            LinearLayout found = card();
+            found.setPadding(dp(12), dp(9), dp(12), dp(9));
+            TextView name = label(ingredient.name, 16, GREEN, true);
+            name.setGravity(Gravity.CENTER);
+            found.addView(name);
+            oralIngredientList.addView(found, matchWrapWithTop(dp(6)));
+        }
+    }
+
+    private void refreshOralMic() {
+        if (oralMicButton == null) return;
+        oralMicButton.setColorFilter(oralListening ? RED_DARK : RED);
+    }
+
+    private void finishOralTest() {
+        if (!"oral_test".equals(screen) || oralRecipe == null) return;
+        stopOralCapture();
+        oralFinished = true;
+        ArrayList<String> missing = new ArrayList<>();
+        for (Item ingredient : oralIngredients) if (!oralFoundIds.contains(ingredient.id)) missing.add(ingredient.name);
+        if (missing.isEmpty()) {
+            oralStatus.setText("Muito bem! Voce lembrou todos os ingredientes.");
+            speakOral("Muito bem! Voce lembrou todos os ingredientes.");
+            oralMicButton.setEnabled(false);
+            return;
+        }
+        String list = TextUtils.join(", ", missing);
+        oralStatus.setText("Faltaram " + missing.size() + " ingrediente(s). Tudo bem: revisar tambem faz parte do estudo.");
+        oralTranscript.setText("Faltaram: " + list);
+        speakOral("Faltaram: " + list + ". Tudo bem. Revisar tambem faz parte do estudo.");
+        oralMicButton.setEnabled(false);
+    }
+
+    private void stopOralCapture() {
+        oralListening = false;
+        if (oralRecognizer != null) {
+            try { oralRecognizer.cancel(); } catch (Exception ignored) { }
+        }
+        if (oralTts != null) oralTts.stop();
     }
 
     private ArrayList<QuizQuestion> buildQuizQuestions() {
@@ -1407,7 +1686,7 @@ public class MainActivity extends Activity {
         result.addView(detail, matchWrapWithTop(dp(10)));
         LinearLayout row = iconStrip();
         addWeightedStripIcon(row, R.drawable.ic_back, RED, "Voltar", v -> showCaderno(currentCadernoId));
-        addWeightedStripIcon(row, R.drawable.ic_report, RED_DARK, "Novo teste", v -> askStartQuiz());
+        addWeightedStripIcon(row, R.drawable.ic_joystick, RED_DARK, "Novo teste", v -> showGameSelection());
         result.addView(row, actionStripParams());
         root.addView(result);
     }
@@ -1464,7 +1743,7 @@ public class MainActivity extends Activity {
         pts.setGravity(Gravity.CENTER);
         card.addView(pts);
         LinearLayout row = iconStrip();
-        addWeightedStripIcon(row, R.drawable.ic_report, RED_DARK, "Reiniciar", v -> startQuizOrExplain());
+        addWeightedStripIcon(row, R.drawable.ic_joystick, RED_DARK, "Reiniciar", v -> startQuizOrExplain());
         addWeightedStripIcon(row, R.drawable.ic_back, RED, "Voltar", v -> showCaderno(currentCadernoId));
         card.addView(row, actionStripParams());
         overlay.addView(card);
@@ -3078,7 +3357,9 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if ("quiz".equals(screen) || "quiz_result".equals(screen) || "game_over".equals(screen)) showCaderno(currentCadernoId);
+        if ("games".equals(screen)) showCaderno(currentCadernoId);
+        else if ("quiz_modes".equals(screen) || "oral_test".equals(screen)) showGameSelection();
+        else if ("quiz".equals(screen) || "quiz_result".equals(screen) || "game_over".equals(screen)) showCaderno(currentCadernoId);
         else if ("recipe_preview".equals(screen)) showCategoria(currentCategoriaId);
         else if ("ingrediente_usos".equals(screen)) showIngredientesCaderno();
         else if ("ingredientes_caderno".equals(screen)) showCaderno(currentCadernoId);
@@ -3086,6 +3367,29 @@ public class MainActivity extends Activity {
         else if ("categoria".equals(screen)) showCaderno(currentCadernoId);
         else if ("caderno".equals(screen)) showHome();
         else super.onBackPressed();
+    }
+
+    @Override
+    protected void onDestroy() {
+        stopOralCapture();
+        if (oralRecognizer != null) {
+            oralRecognizer.destroy();
+            oralRecognizer = null;
+        }
+        if (oralTts != null) {
+            oralTts.shutdown();
+            oralTts = null;
+        }
+        super.onDestroy();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_RECORD_AUDIO) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) beginOralListening();
+            else toast("Permita o uso do microfone para responder ao teste oral.");
+        }
     }
 
     private String readUrl(String value) throws IOException {

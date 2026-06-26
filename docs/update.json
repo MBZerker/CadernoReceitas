@@ -1,12 +1,12 @@
 {
-    "versionCode":  21,
-    "versionName":  "0.21.0-java",
+    "versionCode":  22,
+    "versionName":  "0.22.0-java",
     "critical":  false,
     "pageUrl":  "https://mbzerker.github.io/CadernoReceitas/",
-    "apkUrl":  "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.21.0-java.apk",
-    "sha256":  "964E22A820ACAFBFF23A8293FF258B26E4095DCB235DEBED769E77086A2C5E9A",
-    "sizeBytes":  22743299,
+    "apkUrl":  "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.22.0-java.apk",
+    "sha256":  "200D79DE0A5389BFF9432F9DCB2F9CA15ACF36AC0CD03E81289E3B09B7BF4F05",
+    "sizeBytes":  22750277,
     "signatureSha256":  "f8dec9a06ec4eaf93a1a9b7f5b5cf73490d54d227f0ee172f83177557c79bfe8",
     "origin":  "GitHub Pages oficial do Caderno de Receitas",
-    "changelog":  "Botao de update agora sinaliza quando ha atualizacao disponivel ao abrir o app. Campo de categoria do ingrediente fica bloqueado quando o ingrediente ja possui categoria cadastrada. Destaque de ingrediente vindo da lista cadastrada agora rola a receita ate uma posicao mais visivel. Quiz recebeu regras mais restritas para evitar alternativas ambiguas em quantidade, unidade, combos completos, base principal, duplas na etapa e etapas de mistura/montagem."
+    "changelog":  "Nova central de Jogos com icone de joystick. O Quiz continua com seus modos Prova, Treino e Desafio. Foi incluido o Teste Oral: o app pergunta os ingredientes de uma receita, ouve a resposta pelo microfone, marca os itens reconhecidos e informa o que faltou com leitura em voz alta."
 }
