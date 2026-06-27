@@ -1,12 +1,12 @@
 {
-    "versionCode":  24,
-    "versionName":  "0.24.0-java",
+    "versionCode":  25,
+    "versionName":  "0.25.0-java",
     "critical":  false,
     "pageUrl":  "https://mbzerker.github.io/CadernoReceitas/",
-    "apkUrl":  "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.24.0-java.apk",
-    "sha256":  "BFCFBB22A99B8955F0333A1DF0E3748BC881B1C0427D99E79F95893DC68E4203",
-    "sizeBytes":  22751540,
+    "apkUrl":  "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.25.0-java.apk",
+    "sha256":  "426927A0B0B62FBACE7F54AC6F7AC8EA89628DB603886AE7A31501F9DDCC4DFD",
+    "sizeBytes":  22752010,
     "signatureSha256":  "f8dec9a06ec4eaf93a1a9b7f5b5cf73490d54d227f0ee172f83177557c79bfe8",
     "origin":  "GitHub Pages oficial do Caderno de Receitas",
-    "changelog":  "Refina o Teste Oral: remove perguntas antigas de categoria/unidade/receita vinculada, mantem a pergunta de citar ingredientes, adiciona perguntas exclusivas sobre gordura, proteina em deglacagem e presenca de ingrediente, corrige a seta para pular para a proxima pergunta e reabre o microfone automaticamente apos os feedbacks."
+    "changelog":  "Melhora o reconhecimento oral de ingredientes com comparacao fonetica em portugues, tolerando variacoes como mussarela/mucarela/mucarela com cedilha e pequenas diferencas de escrita sem aceitar apenas palavras genericas."
 }

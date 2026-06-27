@@ -896,19 +896,92 @@ public class MainActivity extends Activity {
         String target = cleanOralText(expected);
         if (spoken.isEmpty() || target.isEmpty()) return false;
         if ((" " + spoken + " ").contains(" " + target + " ")) return true;
+        String spokenSound = oralPhoneticText(transcript);
+        String targetSound = oralPhoneticText(expected);
+        if (!spokenSound.isEmpty() && !targetSound.isEmpty() && (" " + spokenSound + " ").contains(" " + targetSound + " ")) return true;
         ArrayList<String> meaningful = new ArrayList<>();
         for (String token : target.split(" ")) {
             if (token.length() >= 3 && !token.equals("com") && !token.equals("sem") && !token.equals("para")) addUnique(meaningful, token);
         }
         if (meaningful.isEmpty()) return false;
+        String[] spokenTokens = spoken.split(" ");
         int matched = 0;
-        for (String token : meaningful) if ((" " + spoken + " ").contains(" " + token + " ")) matched++;
+        for (String token : meaningful) {
+            if (oralTokenInSpeech(token, spokenTokens)) matched++;
+        }
         if (meaningful.size() == 1) return matched == 1;
         return matched >= 2 && (matched / (float) meaningful.size()) >= 0.66f;
     }
 
     private String cleanOralText(String value) {
         return norm(value).replaceAll("[^a-z0-9]+", " ").trim().replaceAll("\\s+", " ");
+    }
+
+    private String oralPhoneticText(String value) {
+        String clean = cleanOralText((value == null ? "" : value).replace('ç', 's').replace('Ç', 's'));
+        if (clean.isEmpty()) return "";
+        StringBuilder out = new StringBuilder();
+        for (String token : clean.split(" ")) {
+            String sound = oralPhoneticToken(token);
+            if (sound.isEmpty()) continue;
+            if (out.length() > 0) out.append(' ');
+            out.append(sound);
+        }
+        return out.toString();
+    }
+
+    private String oralPhoneticToken(String token) {
+        String t = token == null ? "" : token;
+        if (t.isEmpty()) return "";
+        t = t.replace("ph", "f")
+            .replace("ch", "x")
+            .replace("sh", "x")
+            .replace("z", "s")
+            .replace("qu", "k")
+            .replace("y", "i")
+            .replace("w", "u");
+        t = t.replaceAll("([bcdfghjklmnpqrstvxz])\\1+", "$1");
+        if (t.endsWith("es") && t.length() > 4) t = t.substring(0, t.length() - 1);
+        return t;
+    }
+
+    private boolean oralTokenInSpeech(String targetToken, String[] spokenTokens) {
+        String targetSound = oralPhoneticToken(targetToken);
+        for (String spokenToken : spokenTokens) {
+            if (spokenToken.equals(targetToken)) return true;
+            String spokenSound = oralPhoneticToken(spokenToken);
+            if (!targetSound.isEmpty() && spokenSound.equals(targetSound)) return true;
+            if (oralTokenClose(spokenSound, targetSound)) return true;
+        }
+        return false;
+    }
+
+    private boolean oralTokenClose(String a, String b) {
+        if (a == null || b == null || a.length() < 5 || b.length() < 5) return false;
+        int max = Math.max(a.length(), b.length());
+        int distance = levenshtein(a, b, max > 7 ? 2 : 1);
+        return distance >= 0 && distance <= (max > 7 ? 2 : 1);
+    }
+
+    private int levenshtein(String a, String b, int limit) {
+        if (Math.abs(a.length() - b.length()) > limit) return -1;
+        int[] prev = new int[b.length() + 1];
+        int[] cur = new int[b.length() + 1];
+        for (int j = 0; j <= b.length(); j++) prev[j] = j;
+        for (int i = 1; i <= a.length(); i++) {
+            cur[0] = i;
+            int rowMin = cur[0];
+            for (int j = 1; j <= b.length(); j++) {
+                int cost = a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1;
+                cur[j] = Math.min(Math.min(cur[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost);
+                rowMin = Math.min(rowMin, cur[j]);
+            }
+            if (rowMin > limit) return -1;
+            int[] swap = prev;
+            prev = cur;
+            cur = swap;
+        }
+        return prev[b.length()];
     }
 
     private boolean oralSaysFinish(String transcript) {
