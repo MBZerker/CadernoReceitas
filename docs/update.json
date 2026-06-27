@@ -1,12 +1,12 @@
 {
-    "versionCode":  25,
-    "versionName":  "0.25.0-java",
+    "versionCode":  26,
+    "versionName":  "0.26.0-java",
     "critical":  false,
     "pageUrl":  "https://mbzerker.github.io/CadernoReceitas/",
-    "apkUrl":  "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.25.0-java.apk",
-    "sha256":  "426927A0B0B62FBACE7F54AC6F7AC8EA89628DB603886AE7A31501F9DDCC4DFD",
-    "sizeBytes":  22752010,
+    "apkUrl":  "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.26.0-java.apk",
+    "sha256":  "7FA1E975AF904EA5DB08C192CC59DEB34917A4A6ACA8B792565AE581FDFFA983",
+    "sizeBytes":  22752085,
     "signatureSha256":  "f8dec9a06ec4eaf93a1a9b7f5b5cf73490d54d227f0ee172f83177557c79bfe8",
     "origin":  "GitHub Pages oficial do Caderno de Receitas",
-    "changelog":  "Melhora o reconhecimento oral de ingredientes com comparacao fonetica em portugues, tolerando variacoes como mussarela, mucarela e muzarela, alem de pequenas diferencas de escrita sem aceitar apenas palavras genericas."
+    "changelog":  "Corrige a pergunta oral de presenca de ingrediente para citar o nome da receita, por exemplo: A receita X leva Y?"
 }

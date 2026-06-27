@@ -663,7 +663,7 @@ public class MainActivity extends Activity {
             oralExpectedAnswer = oralExpectedYes ? "sim" : "nao";
         } else if (oralQuestionType == ORAL_QUESTION_HAS_INGREDIENT) {
             Item item = chooseIngredientPresenceOption();
-            oralPrompt = "Esta receita vai " + item.name + "?";
+            oralPrompt = "A receita " + oralRecipe.name + " leva " + item.name + "?";
             oralExpectedAnswer = item.name;
             oralExpectedYes = recipeHasIngredient(item.name);
         } else {
