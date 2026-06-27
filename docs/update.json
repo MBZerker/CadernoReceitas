@@ -1,12 +1,12 @@
 {
-    "versionCode":  23,
-    "versionName":  "0.23.0-java",
+    "versionCode":  24,
+    "versionName":  "0.24.0-java",
     "critical":  false,
     "pageUrl":  "https://mbzerker.github.io/CadernoReceitas/",
-    "apkUrl":  "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.23.0-java.apk",
-    "sha256":  "AB273D66C519AB83FD6F826680A5992207E3B4B50DFAB4C0C9C9F7607C4A00A1",
-    "sizeBytes":  22750881,
+    "apkUrl":  "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.24.0-java.apk",
+    "sha256":  "BFCFBB22A99B8955F0333A1DF0E3748BC881B1C0427D99E79F95893DC68E4203",
+    "sizeBytes":  22751540,
     "signatureSha256":  "f8dec9a06ec4eaf93a1a9b7f5b5cf73490d54d227f0ee172f83177557c79bfe8",
     "origin":  "GitHub Pages oficial do Caderno de Receitas",
-    "changelog":  "Aprimora o teste oral com respostas negativas quando houver erro, reconhecimento por relevancia para ingredientes parciais e novos tipos de pergunta por categoria, unidade e receita vinculada."
+    "changelog":  "Refina o Teste Oral: remove perguntas antigas de categoria/unidade/receita vinculada, mantem a pergunta de citar ingredientes, adiciona perguntas exclusivas sobre gordura, proteina em deglacagem e presenca de ingrediente, corrige a seta para pular para a proxima pergunta e reabre o microfone automaticamente apos os feedbacks."
 }
