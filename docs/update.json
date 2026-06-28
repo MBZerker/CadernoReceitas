@@ -1,12 +1,12 @@
 {
-    "versionCode":  26,
-    "versionName":  "0.26.0-java",
+    "versionCode":  27,
+    "versionName":  "0.27.0-java",
     "critical":  false,
     "pageUrl":  "https://mbzerker.github.io/CadernoReceitas/",
-    "apkUrl":  "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.26.0-java.apk",
-    "sha256":  "7FA1E975AF904EA5DB08C192CC59DEB34917A4A6ACA8B792565AE581FDFFA983",
-    "sizeBytes":  22752085,
+    "apkUrl":  "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.27.0-java.apk",
+    "sha256":  "C09CBF7A62350F982DC86F801EDD008F0C55E93B3C9F89AB3F1614992A65CE5A",
+    "sizeBytes":  22754026,
     "signatureSha256":  "f8dec9a06ec4eaf93a1a9b7f5b5cf73490d54d227f0ee172f83177557c79bfe8",
     "origin":  "GitHub Pages oficial do Caderno de Receitas",
-    "changelog":  "Corrige a pergunta oral de presenca de ingrediente para citar o nome da receita, por exemplo: A receita X leva Y?"
+    "changelog":  "Corrige o Teste Oral: o microfone agora abre somente apos a locutora terminar a pergunta, tenta manter a escuta por ate 20 segundos, avanca automaticamente para a proxima pergunta ao concluir e restaura acentos nas falas principais."
 }

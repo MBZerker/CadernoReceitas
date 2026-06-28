@@ -29,6 +29,7 @@ import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.SpannableString;
@@ -77,6 +78,7 @@ public class MainActivity extends Activity {
     private static final String QUIZ_MODE_DESAFIO = "Desafio";
     private static final int QUIZ_PROVA_MAX_ERROS = 5;
     private static final int REQUEST_RECORD_AUDIO = 607;
+    private static final long ORAL_LISTEN_WINDOW_MS = 20000L;
     private static final int ORAL_QUESTION_INGREDIENTS = 0;
     private static final int ORAL_QUESTION_FAT = 1;
     private static final int ORAL_QUESTION_PROTEIN_DEGLACE = 2;
@@ -110,6 +112,11 @@ public class MainActivity extends Activity {
     private boolean oralTtsReady;
     private boolean oralListening;
     private boolean oralFinished;
+    private long oralListenDeadlineMs;
+    private int oralSpeechSeq;
+    private String oralLastUtteranceId = "";
+    private Runnable oralAfterSpeech;
+    private Runnable oralListenTimeout;
     private int oralQuestionType;
     private String oralPrompt = "";
     private String oralExpectedAnswer = "";
@@ -603,7 +610,7 @@ public class MainActivity extends Activity {
         base(R.drawable.bg_quiz);
         LinearLayout top = card();
         top.addView(headerInline("Teste Oral", this::showGameSelection));
-        TextView lead = label("Responda em voz alta. A seta pula para a proxima pergunta.", 15, MUTED, false);
+        TextView lead = label("Responda em voz alta. A seta pula para a próxima pergunta.", 15, MUTED, false);
         lead.setGravity(Gravity.CENTER);
         top.addView(lead, matchWrapWithTop(dp(4)));
         root.addView(top);
@@ -622,7 +629,7 @@ public class MainActivity extends Activity {
 
         LinearLayout controls = iconStrip();
         oralMicButton = addWeightedStripIcon(controls, R.drawable.ic_mic, RED, "Responder por voz", v -> beginOralListening());
-        oralNextButton = addWeightedStripIcon(controls, R.drawable.ic_arrow_right, GOLD, "Proxima pergunta", v -> nextOralQuestion());
+        oralNextButton = addWeightedStripIcon(controls, R.drawable.ic_arrow_right, GOLD, "Próxima pergunta", v -> nextOralQuestion());
         root.addView(controls, actionStripParams());
 
         oralTranscript = label("", 15, MUTED, false);
@@ -632,8 +639,7 @@ public class MainActivity extends Activity {
         oralIngredientList.setOrientation(LinearLayout.VERTICAL);
         root.addView(oralIngredientList, matchWrapWithTop(dp(4)));
         refreshOralProgress();
-        speakOral(oralPrompt);
-        scheduleOralListen(2200);
+        speakOralThen(oralPrompt, () -> beginOralListening());
     }
 
     private void chooseOralQuestion() {
@@ -654,13 +660,13 @@ public class MainActivity extends Activity {
         oralExpectedYes = false;
         if (oralQuestionType == ORAL_QUESTION_FAT) {
             Item item = fats.get(new Random().nextInt(fats.size()));
-            oralPrompt = "Qual e a gordura usada em " + oralRecipe.name + "?";
+            oralPrompt = "Qual é a gordura usada em " + oralRecipe.name + "?";
             oralExpectedAnswer = item.name;
         } else if (oralQuestionType == ORAL_QUESTION_PROTEIN_DEGLACE) {
             Item item = proteins.get(new Random().nextInt(proteins.size()));
             oralExpectedYes = recipeMethodMentions(item.name) && recipeMethodMentions("deglac");
-            oralPrompt = "A proteina " + item.name + " de " + oralRecipe.name + " passa por deglacagem?";
-            oralExpectedAnswer = oralExpectedYes ? "sim" : "nao";
+            oralPrompt = "A proteína " + item.name + " da receita " + oralRecipe.name + " passa por deglaçagem?";
+            oralExpectedAnswer = oralExpectedYes ? "sim" : "não";
         } else if (oralQuestionType == ORAL_QUESTION_HAS_INGREDIENT) {
             Item item = chooseIngredientPresenceOption();
             oralPrompt = "A receita " + oralRecipe.name + " leva " + item.name + "?";
@@ -704,32 +710,41 @@ public class MainActivity extends Activity {
         oralTts = new TextToSpeech(this, status -> {
             oralTtsReady = status == TextToSpeech.SUCCESS;
             if (!oralTtsReady) {
-                toast("A leitura em voz alta nao esta disponivel neste aparelho.");
+                toast("A leitura em voz alta não está disponível neste aparelho.");
                 return;
             }
             int language = oralTts.setLanguage(new Locale("pt", "BR"));
             oralTts.setPitch(0.95f);
             oralTts.setSpeechRate(0.92f);
+            oralTts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                @Override public void onStart(String utteranceId) { }
+                @Override public void onError(String utteranceId) { runOralAfterSpeech(utteranceId); }
+                @Override public void onDone(String utteranceId) { runOralAfterSpeech(utteranceId); }
+            });
             if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
-                toast("A voz em portugues do Android nao esta instalada.");
+                toast("A voz em português do Android não está instalada.");
             } else if ("oral_test".equals(screen) && oralRecipe != null) {
-                speakOral(oralPrompt);
-                scheduleOralListen(2200);
+                speakOralThen(oralPrompt, () -> beginOralListening());
             }
         });
     }
 
     private void speakOral(String message) {
-        if (!oralTtsReady || oralTts == null || message == null || message.trim().isEmpty()) return;
-        oralTts.speak(message, TextToSpeech.QUEUE_FLUSH, null, "oral-test");
+        speakOralThen(message, null);
     }
 
-    private void scheduleOralListen(long delayMs) {
-        if (root == null) return;
-        pulseOralMic();
-        root.postDelayed(() -> {
-            if ("oral_test".equals(screen) && !oralFinished && !oralListening) beginOralListening();
-        }, delayMs);
+    private void speakOralThen(String message, Runnable afterSpeech) {
+        oralAfterSpeech = afterSpeech;
+        if (!oralTtsReady || oralTts == null || message == null || message.trim().isEmpty()) return;
+        oralLastUtteranceId = "oral-test-" + (++oralSpeechSeq);
+        oralTts.speak(message, TextToSpeech.QUEUE_FLUSH, null, oralLastUtteranceId);
+    }
+
+    private void runOralAfterSpeech(String utteranceId) {
+        if (utteranceId == null || !utteranceId.equals(oralLastUtteranceId)) return;
+        Runnable action = oralAfterSpeech;
+        oralAfterSpeech = null;
+        if (action != null) ui(action);
     }
 
     private void pulseOralMic() {
@@ -752,9 +767,17 @@ public class MainActivity extends Activity {
     }
 
     private void beginOralListening() {
+        startOralListening(true);
+    }
+
+    private void restartOralListening() {
+        startOralListening(false);
+    }
+
+    private void startOralListening(boolean resetDeadline) {
         if (!"oral_test".equals(screen) || oralRecipe == null || oralFinished) return;
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            toast("O reconhecimento de voz nao esta disponivel neste aparelho.");
+            toast("O reconhecimento de voz não está disponível neste aparelho.");
             return;
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -763,8 +786,9 @@ public class MainActivity extends Activity {
         }
         ensureOralRecognizer();
         if (oralRecognizer == null) return;
-        oralTts.stop();
+        if (oralTts != null) oralTts.stop();
         oralListening = true;
+        if (resetDeadline) startOralListenTimeout();
         oralAttemptFoundIds.clear();
         oralStatus.setText(oralQuestionType == ORAL_QUESTION_INGREDIENTS ? "Ouvindo... fale um ingrediente." : "Ouvindo... fale sua resposta.");
         oralMicButton.setColorFilter(RED_DARK);
@@ -773,7 +797,34 @@ public class MainActivity extends Activity {
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR");
         intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
         intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+        intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, ORAL_LISTEN_WINDOW_MS);
+        intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, ORAL_LISTEN_WINDOW_MS);
+        intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, ORAL_LISTEN_WINDOW_MS);
         oralRecognizer.startListening(intent);
+    }
+
+    private void startOralListenTimeout() {
+        cancelOralListenTimeout();
+        oralListenDeadlineMs = SystemClock.elapsedRealtime() + ORAL_LISTEN_WINDOW_MS;
+        oralListenTimeout = () -> {
+            if (!"oral_test".equals(screen) || oralFinished || !oralListening) return;
+            expireOralListening();
+        };
+        quizHandler.postDelayed(oralListenTimeout, ORAL_LISTEN_WINDOW_MS);
+    }
+
+    private void cancelOralListenTimeout() {
+        if (oralListenTimeout != null) quizHandler.removeCallbacks(oralListenTimeout);
+        oralListenTimeout = null;
+    }
+
+    private void expireOralListening() {
+        stopOralCapture();
+        oralFinished = true;
+        oralStatus.setText("Tempo encerrado. Próxima pergunta.");
+        if (oralMicButton != null) oralMicButton.setEnabled(false);
+        cueOralNext();
+        speakOralThen("Tempo encerrado. Próxima pergunta.", () -> nextOralQuestion());
     }
 
     private void ensureOralRecognizer() {
@@ -790,8 +841,19 @@ public class MainActivity extends Activity {
                     if (!"oral_test".equals(screen) || oralFinished) return;
                     oralListening = false;
                     refreshOralMic();
+                    if ((error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && SystemClock.elapsedRealtime() < oralListenDeadlineMs) {
+                        quizHandler.postDelayed(() -> {
+                            if ("oral_test".equals(screen) && !oralFinished && !oralListening) restartOralListening();
+                        }, 250);
+                        return;
+                    }
+                    cancelOralListenTimeout();
+                    if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                        expireOralListening();
+                        return;
+                    }
                     if (error != SpeechRecognizer.ERROR_NO_MATCH && error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
-                        oralStatus.setText("Nao foi possivel ouvir agora. Tente novamente.");
+                        oralStatus.setText("Não foi possível ouvir agora. Tente novamente.");
                     }
                 });
             }
@@ -810,7 +872,8 @@ public class MainActivity extends Activity {
 
     private void processOralTranscript(String transcript, boolean finalResult) {
         if (!"oral_test".equals(screen) || oralRecipe == null) return;
-        oralTranscript.setText("Voce disse: " + transcript);
+        if (finalResult) cancelOralListenTimeout();
+        oralTranscript.setText("Você disse: " + transcript);
         if (oralQuestionType != ORAL_QUESTION_INGREDIENTS) {
             processSingleOralAnswer(transcript, finalResult);
             return;
@@ -828,9 +891,10 @@ public class MainActivity extends Activity {
         refreshOralMic();
         if (oralFoundIds.size() == oralIngredients.size()) {
             oralFinished = true;
-            oralStatus.setText("Tem certeza que nao falta mais uma?");
-            speakOral("Tem certeza que nao falta mais uma?");
+            oralStatus.setText("Tem certeza que não falta mais uma?");
+            if (oralMicButton != null) oralMicButton.setEnabled(false);
             cueOralNext();
+            speakOralThen("Tem certeza que não falta mais uma? Muito bem. Próxima pergunta.", () -> nextOralQuestion());
             return;
         }
         if (oralSaysFinish(transcript)) {
@@ -842,14 +906,12 @@ public class MainActivity extends Activity {
         if (confuse) {
             oralConfusionsLeft--;
             oralStatus.setText("Tem certeza?");
-            speakOral("Tem certeza?");
-            scheduleOralListen(1400);
+            speakOralThen("Tem certeza?", () -> beginOralListening());
             return;
         }
         String feedback = recognizedThisAttempt ? "Muito bem! Mais uma." : "Resposta errada. Tente outra vez.";
         oralStatus.setText(feedback);
-        speakOral(feedback);
-        scheduleOralListen(recognizedThisAttempt ? 1500 : 1800);
+        speakOralThen(feedback, () -> beginOralListening());
     }
 
     private void processSingleOralAnswer(String transcript, boolean finalResult) {
@@ -861,9 +923,8 @@ public class MainActivity extends Activity {
             boolean saidNo = oralSaysNo(transcript);
             boolean saidYes = !saidNo && oralSaysYes(transcript);
             if (!saidYes && !saidNo) {
-                oralStatus.setText("Responda com sim ou nao.");
-                speakOral("Responda com sim ou nao.");
-                scheduleOralListen(1400);
+                oralStatus.setText("Responda com sim ou não.");
+                speakOralThen("Responda com sim ou não.", () -> beginOralListening());
                 return;
             }
             correct = saidYes == oralExpectedYes;
@@ -874,17 +935,16 @@ public class MainActivity extends Activity {
             oralFinished = true;
             oralStatus.setText("Muito bem! Resposta correta.");
             oralMicButton.setEnabled(false);
-            speakOral("Muito bem! Resposta correta.");
             cueOralNext();
+            speakOralThen("Muito bem! Resposta correta. Próxima pergunta.", () -> nextOralQuestion());
             return;
         }
         if (oralSaysFinish(transcript)) {
             finishOralTest();
             return;
         }
-        oralStatus.setText("Ainda nao esta correto. Tente novamente.");
-        speakOral("Ainda nao esta correto. Tente novamente.");
-        scheduleOralListen(1800);
+        oralStatus.setText("Ainda não está correto. Tente novamente.");
+        speakOralThen("Ainda não está correto. Tente novamente.", () -> beginOralListening());
     }
 
     private boolean oralIngredientMentioned(String transcript, String ingredient) {
@@ -1003,7 +1063,7 @@ public class MainActivity extends Activity {
         if (oralStatus == null || oralIngredientList == null) return;
         oralIngredientList.removeAllViews();
         if (oralQuestionType != ORAL_QUESTION_INGREDIENTS) {
-            TextView hint = label("Responda usando o microfone. Use a seta para pular para a proxima pergunta.", 15, MUTED, false);
+            TextView hint = label("Responda usando o microfone. Use a seta para pular para a próxima pergunta.", 15, MUTED, false);
             hint.setGravity(Gravity.CENTER);
             oralIngredientList.addView(hint, matchWrapWithTop(dp(4)));
             return;
@@ -1030,27 +1090,28 @@ public class MainActivity extends Activity {
         stopOralCapture();
         oralFinished = true;
         if (oralQuestionType != ORAL_QUESTION_INGREDIENTS) {
-            oralStatus.setText("Resposta correta: " + oralExpectedAnswer + ". Tudo bem: revisar tambem faz parte do estudo.");
+            oralStatus.setText("Resposta correta: " + oralExpectedAnswer + ". Tudo bem: revisar também faz parte do estudo.");
             oralTranscript.setText("Resposta correta: " + oralExpectedAnswer);
-            speakOral("A resposta correta e " + oralExpectedAnswer + ". Tudo bem. Revisar tambem faz parte do estudo.");
             oralMicButton.setEnabled(false);
+            cueOralNext();
+            speakOralThen("A resposta correta é " + oralExpectedAnswer + ". Tudo bem. Revisar também faz parte do estudo. Próxima pergunta.", () -> nextOralQuestion());
             return;
         }
         ArrayList<String> missing = new ArrayList<>();
         for (Item ingredient : oralIngredients) if (!oralFoundIds.contains(ingredient.id)) missing.add(ingredient.name);
         if (missing.isEmpty()) {
-            oralStatus.setText("Muito bem! Voce lembrou todos os ingredientes.");
-            speakOral("Muito bem! Voce lembrou todos os ingredientes.");
+            oralStatus.setText("Muito bem! Você lembrou todos os ingredientes.");
             oralMicButton.setEnabled(false);
             cueOralNext();
+            speakOralThen("Muito bem! Você lembrou todos os ingredientes. Próxima pergunta.", () -> nextOralQuestion());
             return;
         }
         String list = TextUtils.join(", ", missing);
-        oralStatus.setText("Faltaram " + missing.size() + " ingrediente(s). Tudo bem: revisar tambem faz parte do estudo.");
+        oralStatus.setText("Faltaram " + missing.size() + " ingrediente(s). Tudo bem: revisar também faz parte do estudo.");
         oralTranscript.setText("Faltaram: " + list);
-        speakOral("Faltaram: " + list + ". Tudo bem. Revisar tambem faz parte do estudo.");
         oralMicButton.setEnabled(false);
         cueOralNext();
+        speakOralThen("Faltaram: " + list + ". Tudo bem. Revisar também faz parte do estudo. Próxima pergunta.", () -> nextOralQuestion());
     }
 
     private void nextOralQuestion() {
@@ -1059,6 +1120,9 @@ public class MainActivity extends Activity {
     }
 
     private void stopOralCapture() {
+        cancelOralListenTimeout();
+        oralAfterSpeech = null;
+        oralLastUtteranceId = "";
         oralListening = false;
         if (oralRecognizer != null) {
             try { oralRecognizer.cancel(); } catch (Exception ignored) { }
