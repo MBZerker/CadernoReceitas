@@ -114,6 +114,7 @@ public class MainActivity extends Activity {
     private boolean oralFinished;
     private long oralListenDeadlineMs;
     private int oralSpeechSeq;
+    private int lastOralQuestionType = -1;
     private String oralLastUtteranceId = "";
     private Runnable oralAfterSpeech;
     private Runnable oralListenTimeout;
@@ -155,6 +156,8 @@ public class MainActivity extends Activity {
     private int currentCadernoId;
     private int currentCategoriaId;
     private int currentReceitaId;
+    private boolean gameAllCategories = true;
+    private final LinkedHashSet<Integer> gameCategoryFilterIds = new LinkedHashSet<>();
     private int highlightedIngredientId;
     private String screen = "home";
 
@@ -261,6 +264,10 @@ public class MainActivity extends Activity {
 
     private void showCaderno(int id) {
         screen = "caderno";
+        if (currentCadernoId != id) {
+            gameAllCategories = true;
+            gameCategoryFilterIds.clear();
+        }
         currentCadernoId = id;
         Item caderno = db.get("cadernos", id);
         base(R.drawable.bg_caderno);
@@ -272,7 +279,7 @@ public class MainActivity extends Activity {
         LinearLayout cadernoActions = iconStrip();
         addWeightedStripIcon(cadernoActions, R.drawable.ic_plus, RED, "Adicionar tipo de receitas", v -> newCategoria());
         addWeightedStripIcon(cadernoActions, R.drawable.ic_clipboard_list, GOLD, "Ingredientes cadastrados", v -> showIngredientesCaderno());
-        addWeightedStripIcon(cadernoActions, R.drawable.ic_joystick, RED_DARK, "Jogos", v -> showGameSelection());
+        addWeightedStripIcon(cadernoActions, R.drawable.ic_joystick, RED_DARK, "Jogos", v -> showGameTypeSelection());
         addWeightedStripIcon(cadernoActions, R.drawable.ic_share_nodes, RED, "Compartilhar caderno", v -> shareCaderno(currentCadernoId));
         add.addView(cadernoActions, actionStripParams());
         root.addView(add);
@@ -454,12 +461,66 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void showGameTypeSelection() {
+        screen = "game_types";
+        base(R.drawable.bg_quiz);
+        LinearLayout top = card();
+        top.addView(headerInline("Tipos para jogos", () -> showCaderno(currentCadernoId)));
+        TextView lead = label("Escolha quais tipos de receitas entram nos jogos.", 16, MUTED, false);
+        lead.setGravity(Gravity.CENTER);
+        top.addView(lead, matchWrapWithTop(dp(4)));
+        root.addView(top);
+
+        List<Item> categories = db.categorias(currentCadernoId, "");
+        sortItems(categories);
+        root.addView(gameTypeCard(R.drawable.ic_book, "Todos os tipos", "Usar todas as receitas deste caderno.", gameAllCategories, () -> {
+            gameAllCategories = true;
+            gameCategoryFilterIds.clear();
+            showGameTypeSelection();
+        }));
+        for (Item category : categories) {
+            boolean selected = !gameAllCategories && gameCategoryFilterIds.contains(category.id);
+            root.addView(gameTypeCard(R.drawable.ic_category, category.name, db.countReceitasCategoria(category.id) + " receitas", selected, () -> {
+                gameAllCategories = false;
+                if (gameCategoryFilterIds.contains(category.id)) gameCategoryFilterIds.remove(category.id);
+                else gameCategoryFilterIds.add(category.id);
+                showGameTypeSelection();
+            }));
+        }
+        LinearLayout action = iconStrip();
+        addWeightedStripIcon(action, R.drawable.ic_arrow_right, RED_DARK, "Continuar", v -> {
+            if (!gameAllCategories && gameCategoryFilterIds.isEmpty()) {
+                toast("Selecione pelo menos um tipo de receitas.");
+                return;
+            }
+            showGameSelection();
+        });
+        root.addView(action, actionStripParams());
+    }
+
+    private LinearLayout gameTypeCard(int icon, String title, String subtitle, boolean selected, Runnable action) {
+        LinearLayout box = card();
+        box.setPadding(dp(14), dp(14), dp(14), dp(14));
+        LinearLayout row = hrow();
+        int color = selected ? GREEN : MUTED;
+        row.addView(frameIcon(icon, selected ? GREEN : GOLD, dp(46)), new LinearLayout.LayoutParams(dp(58), dp(64)));
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        text.addView(label(title, 20, selected ? GREEN : RED, true));
+        text.addView(label(subtitle, 14, MUTED, false), matchWrapWithTop(dp(4)));
+        text.addView(label(selected ? "Selecionado" : "Toque para selecionar", 13, color, true), matchWrapWithTop(dp(6)));
+        row.addView(text, new LinearLayout.LayoutParams(0, -2, 1));
+        box.addView(row);
+        box.setOnClickListener(v -> action.run());
+        return box;
+    }
+
     private void showGameSelection() {
         screen = "games";
         base(R.drawable.bg_quiz);
         LinearLayout top = card();
-        top.addView(headerInline("Jogos", () -> showCaderno(currentCadernoId)));
-        TextView lead = label("Escolha como quer estudar este caderno.", 16, MUTED, false);
+        top.addView(headerInline("Jogos", this::showGameTypeSelection));
+        TextView lead = label("Receitas: " + gameFilterLabel() + ". Escolha como quer estudar.", 16, MUTED, false);
         lead.setGravity(Gravity.CENTER);
         top.addView(lead, matchWrapWithTop(dp(4)));
         root.addView(top);
@@ -488,10 +549,27 @@ public class MainActivity extends Activity {
         return box;
     }
 
+    private List<Item> gameRecipes() {
+        ArrayList<Item> out = new ArrayList<>();
+        for (Item recipe : db.receitasCaderno(currentCadernoId)) {
+            if (gameAllCategories || gameCategoryFilterIds.contains(recipe.parentId)) out.add(recipe);
+        }
+        return out;
+    }
+
+    private String gameFilterLabel() {
+        if (gameAllCategories || gameCategoryFilterIds.isEmpty()) return "todos os tipos";
+        ArrayList<String> names = new ArrayList<>();
+        for (Item category : db.categorias(currentCadernoId, "")) {
+            if (gameCategoryFilterIds.contains(category.id)) addUnique(names, category.name);
+        }
+        return names.isEmpty() ? "todos os tipos" : TextUtils.join(", ", names);
+    }
+
     private void askStartQuiz() {
-        int total = db.countReceitasCaderno(currentCadernoId);
+        int total = gameRecipes().size();
         if (total < 5) {
-            toast("Teste bloqueado: cadastre pelo menos 5 receitas neste caderno.");
+            toast("Teste bloqueado: selecione tipos com pelo menos 5 receitas.");
             return;
         }
         showQuizModeSelection();
@@ -586,13 +664,13 @@ public class MainActivity extends Activity {
 
     private void showOralTest() {
         ArrayList<Item> available = new ArrayList<>();
-        for (Item recipe : db.receitasCaderno(currentCadernoId)) {
+        for (Item recipe : gameRecipes()) {
             if (!db.ingredientes(recipe.id, "").isEmpty()) available.add(recipe);
         }
         if (available.isEmpty()) {
             showThemed(themedDialog("Teste Oral bloqueado", null)
                 .setMessage("Cadastre pelo menos uma receita com ingredientes para usar o teste oral.")
-                .setPositiveButton("Entendi", (d, w) -> showGameSelection()));
+                .setPositiveButton("Entendi", (d, w) -> showGameTypeSelection()));
             return;
         }
         Collections.shuffle(available);
@@ -654,8 +732,10 @@ public class MainActivity extends Activity {
         if (!fats.isEmpty()) types.add(ORAL_QUESTION_FAT);
         if (!proteins.isEmpty()) types.add(ORAL_QUESTION_PROTEIN_DEGLACE);
         if (!oralIngredients.isEmpty()) types.add(ORAL_QUESTION_HAS_INGREDIENT);
+        if (types.size() > 1) types.remove(Integer.valueOf(lastOralQuestionType));
         Collections.shuffle(types);
         oralQuestionType = types.get(0);
+        lastOralQuestionType = oralQuestionType;
         oralExpectedAnswer = "";
         oralExpectedYes = false;
         if (oralQuestionType == ORAL_QUESTION_FAT) {
@@ -1046,7 +1126,7 @@ public class MainActivity extends Activity {
 
     private boolean oralSaysFinish(String transcript) {
         String spoken = cleanOralText(transcript);
-        return spoken.equals("nao") || spoken.equals("nao sei") || spoken.contains("nao lembro") || spoken.contains("so isso") || spoken.contains("e so") || spoken.contains("acabou") || spoken.contains("nenhum outro");
+        return spoken.equals("nao sei") || spoken.contains("nao lembro") || spoken.contains("nao tem mais") || spoken.contains("nao falta") || spoken.contains("so isso") || spoken.contains("e so") || spoken.contains("acabou") || spoken.contains("nenhum outro");
     }
 
     private boolean oralSaysYes(String transcript) {
@@ -1133,7 +1213,7 @@ public class MainActivity extends Activity {
     private ArrayList<QuizQuestion> buildQuizQuestions() {
         ArrayList<QuizQuestion> out = new ArrayList<>();
         ArrayList<QuizEngine.RecipeData> data = new ArrayList<>();
-        List<Item> recipes = db.receitasCaderno(currentCadernoId);
+        List<Item> recipes = gameRecipes();
         for (Item recipe : recipes) {
             QuizEngine.RecipeData recipeData = new QuizEngine.RecipeData(recipe.id, recipe.name, recipe.desc);
             for (Item ingredient : db.ingredientes(recipe.id, "")) {
@@ -2027,7 +2107,7 @@ public class MainActivity extends Activity {
         result.addView(detail, matchWrapWithTop(dp(10)));
         LinearLayout row = iconStrip();
         addWeightedStripIcon(row, R.drawable.ic_back, RED, "Voltar", v -> showCaderno(currentCadernoId));
-        addWeightedStripIcon(row, R.drawable.ic_joystick, RED_DARK, "Novo teste", v -> showGameSelection());
+        addWeightedStripIcon(row, R.drawable.ic_joystick, RED_DARK, "Novo teste", v -> showGameTypeSelection());
         result.addView(row, actionStripParams());
         root.addView(result);
     }
@@ -3698,7 +3778,8 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if ("games".equals(screen)) showCaderno(currentCadernoId);
+        if ("game_types".equals(screen)) showCaderno(currentCadernoId);
+        else if ("games".equals(screen)) showGameTypeSelection();
         else if ("quiz_modes".equals(screen) || "oral_test".equals(screen)) showGameSelection();
         else if ("quiz".equals(screen) || "quiz_result".equals(screen) || "game_over".equals(screen)) showCaderno(currentCadernoId);
         else if ("recipe_preview".equals(screen)) showCategoria(currentCategoriaId);
