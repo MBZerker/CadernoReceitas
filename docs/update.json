@@ -1,12 +1,12 @@
 {
-    "versionCode":  28,
-    "versionName":  "0.28.0-java",
+    "versionCode":  29,
+    "versionName":  "0.29.0-java",
     "critical":  false,
     "pageUrl":  "https://mbzerker.github.io/CadernoReceitas/",
-    "apkUrl":  "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.28.0-java.apk",
-    "sha256":  "ABB57CF1DCCFBBE256A059BD2CCA468096F501A800FA061A595031FAFA404463",
-    "sizeBytes":  22754708,
+    "apkUrl":  "https://raw.githubusercontent.com/MBZerker/CadernoReceitas/main/docs/CadernoReceitas-0.29.0-java.apk",
+    "sha256":  "E1E43ADE1CF4237FD55C4FAE5E4AE9B2E61BC27650D8FAD030DEC4600028DC0B",
+    "sizeBytes":  22755308,
     "signatureSha256":  "f8dec9a06ec4eaf93a1a9b7f5b5cf73490d54d227f0ee172f83177557c79bfe8",
     "origin":  "GitHub Pages oficial do Caderno de Receitas",
-    "changelog":  "Adiciona selecao de tipos de receitas antes dos jogos, valendo para Quiz e Teste Oral. Ajusta o Teste Oral para nao encerrar a lista de ingredientes com um simples nao e evita repetir imediatamente o mesmo tipo de pergunta."
+    "changelog":  "Corrige a confirmacao do Teste Oral: respostas como sim, com certeza, exatamente e tenho certeza agora sao tratadas como confirmacao, sem virar resposta errada."
 }
