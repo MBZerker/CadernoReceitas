@@ -124,6 +124,7 @@ public class MainActivity extends Activity {
     private boolean oralExpectedYes;
     private boolean oralAwaitingConfirmation;
     private boolean oralConfirmationWasCorrect;
+    private boolean oralAwaitingFinishConfirmation;
     private int oralConfusionsLeft;
     private Item oralRecipe;
     private final ArrayList<Item> oralIngredients = new ArrayList<>();
@@ -684,6 +685,7 @@ public class MainActivity extends Activity {
         oralFinished = false;
         oralAwaitingConfirmation = false;
         oralConfirmationWasCorrect = false;
+        oralAwaitingFinishConfirmation = false;
         oralConfusionsLeft = 1 + new Random().nextInt(2);
         chooseOralQuestion();
         ensureOralTts();
@@ -744,6 +746,7 @@ public class MainActivity extends Activity {
         oralExpectedYes = false;
         oralAwaitingConfirmation = false;
         oralConfirmationWasCorrect = false;
+        oralAwaitingFinishConfirmation = false;
         if (oralQuestionType == ORAL_QUESTION_FAT) {
             Item item = fats.get(new Random().nextInt(fats.size()));
             oralPrompt = "Qual é a gordura usada em " + oralRecipe.name + "?";
@@ -960,6 +963,10 @@ public class MainActivity extends Activity {
         if (!"oral_test".equals(screen) || oralRecipe == null) return;
         if (finalResult) cancelOralListenTimeout();
         oralTranscript.setText("Você disse: " + transcript);
+        if (oralAwaitingFinishConfirmation) {
+            handleOralFinishConfirmation(transcript, finalResult);
+            return;
+        }
         if (oralAwaitingConfirmation) {
             handleOralConfirmation(transcript, finalResult);
             return;
@@ -988,7 +995,7 @@ public class MainActivity extends Activity {
             return;
         }
         if (oralSaysFinish(transcript)) {
-            finishOralTest();
+            askToFinishOralIngredients();
             return;
         }
         boolean recognizedThisAttempt = oralFoundIds.size() > foundBefore;
@@ -1004,6 +1011,31 @@ public class MainActivity extends Activity {
         String feedback = recognizedThisAttempt ? "Muito bem! Mais uma." : "Resposta errada. Tente outra vez.";
         oralStatus.setText(feedback);
         speakOralThen(feedback, () -> beginOralListening());
+    }
+
+    private void askToFinishOralIngredients() {
+        oralAwaitingFinishConfirmation = true;
+        oralStatus.setText("Quer encerrar e revelar o que falta?");
+        speakOralThen("Quer encerrar e revelar o que falta?", () -> beginOralListening());
+    }
+
+    private void handleOralFinishConfirmation(String transcript, boolean finalResult) {
+        if (!finalResult) return;
+        oralListening = false;
+        refreshOralMic();
+        boolean saidNo = oralSaysConfirmationNo(transcript);
+        boolean saidYes = !saidNo && oralSaysConfirmationYes(transcript);
+        oralAwaitingFinishConfirmation = false;
+        if (saidYes) {
+            finishOralTest();
+            return;
+        }
+        if (saidNo) {
+            oralStatus.setText("Certo. Continue falando os ingredientes.");
+            speakOralThen("Certo. Continue falando os ingredientes.", () -> beginOralListening());
+            return;
+        }
+        processOralTranscript(transcript, finalResult);
     }
 
     private void handleOralConfirmation(String transcript, boolean finalResult) {
@@ -1238,6 +1270,7 @@ public class MainActivity extends Activity {
         oralFinished = true;
         oralAwaitingConfirmation = false;
         oralConfirmationWasCorrect = false;
+        oralAwaitingFinishConfirmation = false;
         if (oralQuestionType != ORAL_QUESTION_INGREDIENTS) {
             oralStatus.setText("Resposta correta: " + oralExpectedAnswer + ". Tudo bem: revisar também faz parte do estudo.");
             oralTranscript.setText("Resposta correta: " + oralExpectedAnswer);
