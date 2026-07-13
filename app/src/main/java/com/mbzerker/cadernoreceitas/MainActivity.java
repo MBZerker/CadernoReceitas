@@ -125,6 +125,7 @@ public class MainActivity extends Activity {
     private boolean oralAwaitingConfirmation;
     private boolean oralConfirmationWasCorrect;
     private boolean oralAwaitingFinishConfirmation;
+    private boolean oralAwaitingAllFoundConfirmation;
     private int oralConfusionsLeft;
     private Item oralRecipe;
     private final ArrayList<Item> oralIngredients = new ArrayList<>();
@@ -417,6 +418,21 @@ public class MainActivity extends Activity {
 
         root.addView(header(R.drawable.ic_recipe, receita.name, "Ingredientes e preparo da receita.", this::backFromReceita));
 
+        List<Item> parentRecipes = db.parentRecipesForComplement(id);
+        if (!parentRecipes.isEmpty()) {
+            LinearLayout linked = card();
+            linked.addView(titleRow(R.drawable.ic_link, "Complemento de receitas", 20));
+            for (Item parent : parentRecipes) {
+                TextView tag = label(parent.name, 15, RED_DARK, true);
+                tag.setGravity(Gravity.CENTER);
+                tag.setPadding(dp(12), dp(8), dp(12), dp(8));
+                tag.setBackground(round(Color.argb(70, 217, 154, 59), dp(16), Color.argb(150, 217, 154, 59), 1));
+                tag.setOnClickListener(v -> openLinkedReceita(parent.id));
+                linked.addView(tag, matchWrapWithTop(dp(6)));
+            }
+            root.addView(linked);
+        }
+
         LinearLayout ingredientActions = card();
         ingredientActions.addView(titleRow(R.drawable.ic_ingredient, "Ingredientes", 20));
         ingredientActions.addView(centeredLabel("Adicione os ingredientes desta receita.", 14, MUTED, false));
@@ -686,6 +702,7 @@ public class MainActivity extends Activity {
         oralAwaitingConfirmation = false;
         oralConfirmationWasCorrect = false;
         oralAwaitingFinishConfirmation = false;
+        oralAwaitingAllFoundConfirmation = false;
         oralConfusionsLeft = 1 + new Random().nextInt(2);
         chooseOralQuestion();
         ensureOralTts();
@@ -747,6 +764,7 @@ public class MainActivity extends Activity {
         oralAwaitingConfirmation = false;
         oralConfirmationWasCorrect = false;
         oralAwaitingFinishConfirmation = false;
+        oralAwaitingAllFoundConfirmation = false;
         if (oralQuestionType == ORAL_QUESTION_FAT) {
             Item item = fats.get(new Random().nextInt(fats.size()));
             oralPrompt = "Qual é a gordura usada em " + oralRecipe.name + "?";
@@ -963,6 +981,10 @@ public class MainActivity extends Activity {
         if (!"oral_test".equals(screen) || oralRecipe == null) return;
         if (finalResult) cancelOralListenTimeout();
         oralTranscript.setText("Você disse: " + transcript);
+        if (oralAwaitingAllFoundConfirmation) {
+            handleOralAllFoundConfirmation(transcript, finalResult);
+            return;
+        }
         if (oralAwaitingFinishConfirmation) {
             handleOralFinishConfirmation(transcript, finalResult);
             return;
@@ -987,11 +1009,7 @@ public class MainActivity extends Activity {
         oralListening = false;
         refreshOralMic();
         if (oralFoundIds.size() == oralIngredients.size()) {
-            oralFinished = true;
-            oralStatus.setText("Tem certeza que não falta mais uma?");
-            if (oralMicButton != null) oralMicButton.setEnabled(false);
-            cueOralNext();
-            speakOralThen("Tem certeza que não falta mais uma? Muito bem. Próxima pergunta.", () -> nextOralQuestion());
+            askToConfirmAllOralIngredients();
             return;
         }
         if (oralSaysFinish(transcript)) {
@@ -1017,6 +1035,31 @@ public class MainActivity extends Activity {
         oralAwaitingFinishConfirmation = true;
         oralStatus.setText("Quer encerrar e revelar o que falta?");
         speakOralThen("Quer encerrar e revelar o que falta?", () -> beginOralListening());
+    }
+
+    private void askToConfirmAllOralIngredients() {
+        oralAwaitingAllFoundConfirmation = true;
+        oralStatus.setText("Tem certeza que não falta mais uma?");
+        speakOralThen("Tem certeza que não falta mais uma?", () -> beginOralListening());
+    }
+
+    private void handleOralAllFoundConfirmation(String transcript, boolean finalResult) {
+        if (!finalResult) return;
+        oralListening = false;
+        refreshOralMic();
+        boolean saidNo = oralSaysConfirmationNo(transcript);
+        boolean saidYes = !saidNo && (oralSaysConfirmationYes(transcript) || oralSaysFinish(transcript));
+        oralAwaitingAllFoundConfirmation = false;
+        if (saidYes) {
+            finishOralTest();
+            return;
+        }
+        if (saidNo) {
+            oralStatus.setText("Certo. Continue falando os ingredientes.");
+            speakOralThen("Certo. Continue falando os ingredientes.", () -> beginOralListening());
+            return;
+        }
+        processOralTranscript(transcript, finalResult);
     }
 
     private void handleOralFinishConfirmation(String transcript, boolean finalResult) {
@@ -1060,8 +1103,8 @@ public class MainActivity extends Activity {
             oralStatus.setText("Muito bem! Mais uma.");
             speakOralThen("Muito bem! Mais uma.", () -> beginOralListening());
         } else {
-            oralStatus.setText("Ainda não encontrei esse ingrediente. Tente outro.");
-            speakOralThen("Ainda não encontrei esse ingrediente. Tente outro.", () -> beginOralListening());
+            oralStatus.setText("Certo. Continue falando os ingredientes.");
+            speakOralThen("Certo. Continue falando os ingredientes.", () -> beginOralListening());
         }
         oralConfirmationWasCorrect = false;
     }
@@ -1271,6 +1314,7 @@ public class MainActivity extends Activity {
         oralAwaitingConfirmation = false;
         oralConfirmationWasCorrect = false;
         oralAwaitingFinishConfirmation = false;
+        oralAwaitingAllFoundConfirmation = false;
         if (oralQuestionType != ORAL_QUESTION_INGREDIENTS) {
             oralStatus.setText("Resposta correta: " + oralExpectedAnswer + ". Tudo bem: revisar também faz parte do estudo.");
             oralTranscript.setText("Resposta correta: " + oralExpectedAnswer);
@@ -2943,17 +2987,38 @@ public class MainActivity extends Activity {
     }
 
     private void newReceita() {
+        showRecipeDialog("Nova receita", null);
+    }
+
+    private void showRecipeDialog(String title, Item item) {
         LinearLayout box = themedDialogBox();
-        EditText nome = entry("Nome da receita", "");
+        int recipeId = item == null ? 0 : item.id;
+        int cadernoId = item == null || item.cadernoId == 0 ? currentCadernoId : item.cadernoId;
+        int categoriaId = item == null || item.parentId == 0 ? currentCategoriaId : item.parentId;
+        EditText nome = entry("Nome da receita", item == null ? "" : item.name);
+        RecipeLinkPicker linkPicker = new RecipeLinkPicker(cadernoId, recipeId);
         box.addView(nome);
-        showThemed(themedDialog("Nova receita", box)
+        box.addView(linkPicker.view);
+        AlertDialog dialog = showThemed(themedDialog(title, box)
             .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Salvar", (d, w) -> {
-                if (blank(nome)) return;
-                int receitaId = db.addReceita(currentCadernoId, currentCategoriaId, text(nome), "");
-                db.setLocked("receitas", receitaId, false);
-                showReceita(receitaId);
-            }));
+            .setPositiveButton("Salvar", null));
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            if (!linkPicker.consumePendingInput()) return;
+            if (blank(nome)) return;
+            if (item == null) {
+                int createdId = db.addReceita(cadernoId, categoriaId, text(nome), "");
+                db.setLocked("receitas", createdId, false);
+                db.saveRecipeComplementParents(createdId, linkPicker.selectedIds());
+                dialog.dismiss();
+                showReceita(createdId);
+            } else {
+                db.saveReceita(item.id, cadernoId, categoriaId, text(nome), item.desc);
+                db.saveRecipeComplementParents(item.id, linkPicker.selectedIds());
+                dialog.dismiss();
+                if ("receita".equals(screen)) showReceita(item.id);
+                else renderReceitas();
+            }
+        });
     }
 
     private void newIngrediente() {
@@ -3014,11 +3079,7 @@ public class MainActivity extends Activity {
     }
 
     private void editReceita(Item item) {
-        editOne("Editar receita", "Nome", item.name, value -> {
-            db.saveReceita(item.id, currentCadernoId, currentCategoriaId, value, item.desc);
-            if ("receita".equals(screen)) showReceita(item.id);
-            else renderReceitas();
-        });
+        showRecipeDialog("Editar receita", item);
     }
 
     private void editPreparo(Item item) {
@@ -4337,14 +4398,141 @@ public class MainActivity extends Activity {
         String extra = "";
     }
 
+    class RecipeLinkPicker {
+        final LinearLayout view;
+        final LinearLayout tagBox;
+        final AutoCompleteTextView input;
+        final HashMap<String, Item> recipesByNorm = new HashMap<>();
+        final LinkedHashMap<Integer, Item> selected = new LinkedHashMap<>();
+
+        RecipeLinkPicker(int cadernoId, int currentRecipeId) {
+            view = new LinearLayout(MainActivity.this);
+            view.setOrientation(LinearLayout.VERTICAL);
+            view.setPadding(0, dp(8), 0, 0);
+            TextView title = centeredLabel("Complemento de receitas", 14, RED_DARK, true);
+            view.addView(title);
+            TextView hint = centeredLabel("Busque receitas existentes. Separe por virgula para criar varias tags.", 13, MUTED, false);
+            view.addView(hint, matchWrapWithTop(dp(2)));
+
+            ArrayList<String> names = new ArrayList<>();
+            for (Item recipe : db.receitasCaderno(cadernoId)) {
+                if (recipe.id == currentRecipeId) continue;
+                recipesByNorm.put(norm(recipe.name), recipe);
+                names.add(recipe.name);
+            }
+
+            tagBox = new LinearLayout(MainActivity.this);
+            tagBox.setOrientation(LinearLayout.VERTICAL);
+            view.addView(tagBox, matchWrapWithTop(dp(6)));
+
+            input = autoEntry("Buscar receita existente", names);
+            input.setSingleLine(true);
+            input.setOnClickListener(v -> input.showDropDown());
+            input.setOnFocusChangeListener((v, hasFocus) -> {
+                if (hasFocus) input.showDropDown();
+            });
+            input.setOnItemClickListener((parent, row, position, id) -> {
+                addByName(String.valueOf(parent.getItemAtPosition(position)));
+                input.setText("");
+            });
+            input.addTextChangedListener(new TextWatcher() {
+                boolean internal;
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+                public void onTextChanged(CharSequence s, int start, int before, int count) { }
+                public void afterTextChanged(Editable s) {
+                    if (internal) return;
+                    String value = s == null ? "" : s.toString();
+                    if (!value.contains(",")) return;
+                    String[] parts = value.split(",", -1);
+                    boolean valid = true;
+                    for (int i = 0; i < parts.length - 1; i++) {
+                        String token = parts[i].trim();
+                        if (token.isEmpty()) continue;
+                        if (!addByName(token)) valid = false;
+                    }
+                    if (!valid) {
+                        toast("Escolha apenas receitas existentes da lista.");
+                        return;
+                    }
+                    internal = true;
+                    input.setText(parts[parts.length - 1].trim());
+                    input.setSelection(input.getText().length());
+                    internal = false;
+                }
+            });
+            view.addView(input, matchWrapWithTop(dp(6)));
+
+            if (currentRecipeId > 0) {
+                for (Item recipe : db.parentRecipesForComplement(currentRecipeId)) selected.put(recipe.id, recipe);
+            }
+            refreshTags();
+        }
+
+        boolean addByName(String name) {
+            Item recipe = recipesByNorm.get(norm(name));
+            if (recipe == null) return false;
+            selected.put(recipe.id, recipe);
+            refreshTags();
+            return true;
+        }
+
+        boolean consumePendingInput() {
+            String raw = text(input);
+            if (raw.isEmpty()) return true;
+            String[] parts = raw.split(",");
+            ArrayList<Item> toAdd = new ArrayList<>();
+            for (String part : parts) {
+                String token = part.trim();
+                if (token.isEmpty()) continue;
+                Item recipe = recipesByNorm.get(norm(token));
+                if (recipe == null) {
+                    toast("Use a lista para escolher uma receita existente.");
+                    input.requestFocus();
+                    input.showDropDown();
+                    return false;
+                }
+                toAdd.add(recipe);
+            }
+            for (Item recipe : toAdd) selected.put(recipe.id, recipe);
+            input.setText("");
+            refreshTags();
+            return true;
+        }
+
+        ArrayList<Integer> selectedIds() {
+            return new ArrayList<>(selected.keySet());
+        }
+
+        void refreshTags() {
+            tagBox.removeAllViews();
+            if (selected.isEmpty()) {
+                TextView empty = centeredLabel("Nenhuma receita vinculada.", 13, MUTED, false);
+                tagBox.addView(empty);
+                return;
+            }
+            for (Item recipe : selected.values()) {
+                TextView tag = label("x  " + recipe.name, 14, RED_DARK, true);
+                tag.setGravity(Gravity.CENTER_VERTICAL);
+                tag.setPadding(dp(12), dp(8), dp(12), dp(8));
+                tag.setBackground(round(Color.argb(70, 217, 154, 59), dp(16), Color.argb(150, 217, 154, 59), 1));
+                tag.setOnClickListener(v -> {
+                    selected.remove(recipe.id);
+                    refreshTags();
+                });
+                tagBox.addView(tag, matchWrapWithTop(dp(6)));
+            }
+        }
+    }
+
     class Db extends SQLiteOpenHelper {
-        Db(Context context) { super(context, "caderno_receitas_java.db", null, 4); }
+        Db(Context context) { super(context, "caderno_receitas_java.db", null, 5); }
 
         public void onCreate(SQLiteDatabase db) {
             db.execSQL("CREATE TABLE cadernos(id INTEGER PRIMARY KEY AUTOINCREMENT,nome TEXT NOT NULL,descricao TEXT,criado INTEGER,bloqueado INTEGER NOT NULL DEFAULT 1)");
             db.execSQL("CREATE TABLE categorias(id INTEGER PRIMARY KEY AUTOINCREMENT,caderno_id INTEGER NOT NULL,nome TEXT NOT NULL,descricao TEXT,criado INTEGER,bloqueado INTEGER NOT NULL DEFAULT 1)");
             db.execSQL("CREATE TABLE receitas(id INTEGER PRIMARY KEY AUTOINCREMENT,caderno_id INTEGER NOT NULL,categoria_id INTEGER NOT NULL,nome TEXT NOT NULL,preparo TEXT,bloqueado INTEGER NOT NULL DEFAULT 0)");
             db.execSQL("CREATE TABLE ingredientes(id INTEGER PRIMARY KEY AUTOINCREMENT,receita_id INTEGER NOT NULL,nome TEXT NOT NULL,quantidade TEXT,categoria TEXT,receita_link_id INTEGER NOT NULL DEFAULT 0,bloqueado INTEGER NOT NULL DEFAULT 1)");
+            createRecipeComplementsTable(db);
             createQuizScoresTable(db);
         }
 
@@ -4361,11 +4549,18 @@ public class MainActivity extends Activity {
             if (oldVersion < 4) {
                 createQuizScoresTable(db);
             }
+            if (oldVersion < 5) {
+                createRecipeComplementsTable(db);
+            }
         }
 
 
         void createQuizScoresTable(SQLiteDatabase db) {
             db.execSQL("CREATE TABLE IF NOT EXISTS quiz_scores(id INTEGER PRIMARY KEY AUTOINCREMENT,caderno_id INTEGER NOT NULL,modo TEXT NOT NULL,pontos INTEGER NOT NULL,acertos INTEGER NOT NULL,erros INTEGER NOT NULL,total INTEGER NOT NULL,tempo_ms INTEGER NOT NULL,criado INTEGER NOT NULL)");
+        }
+
+        void createRecipeComplementsTable(SQLiteDatabase db) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS receita_complementos(receita_id INTEGER NOT NULL,complemento_id INTEGER NOT NULL,PRIMARY KEY(receita_id,complemento_id))");
         }
 
         void saveQuizScore(int caderno, String modo, int pontos, int acertos, int erros, int total, long tempoMs) {
@@ -4527,6 +4722,24 @@ public class MainActivity extends Activity {
             return list("SELECT id,nome,preparo descricao,'' extra,categoria_id parent_id,caderno_id,0 receita_link_id,bloqueado FROM receitas WHERE id<>" + receitaAtual + " ORDER BY nome", "");
         }
 
+        List<Item> parentRecipesForComplement(int complementoId) {
+            return list("SELECT r.id,r.nome,r.preparo descricao,'' extra,r.categoria_id parent_id,r.caderno_id,0 receita_link_id,r.bloqueado FROM receita_complementos rc JOIN receitas r ON r.id=rc.receita_id WHERE rc.complemento_id=" + complementoId + " ORDER BY r.nome", "");
+        }
+
+        void saveRecipeComplementParents(int complementoId, Collection<Integer> parentIds) {
+            SQLiteDatabase writable = getWritableDatabase();
+            writable.delete("receita_complementos", "complemento_id=?", new String[]{String.valueOf(complementoId)});
+            LinkedHashSet<Integer> unique = new LinkedHashSet<>();
+            if (parentIds != null) unique.addAll(parentIds);
+            for (Integer parentId : unique) {
+                if (parentId == null || parentId <= 0 || parentId == complementoId) continue;
+                ContentValues v = new ContentValues();
+                v.put("receita_id", parentId);
+                v.put("complemento_id", complementoId);
+                writable.insertWithOnConflict("receita_complementos", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+            }
+        }
+
         List<Item> ingredientesCaderno(int caderno, String q) {
             return list("SELECT i.id,i.nome,i.quantidade descricao,(CASE WHEN IFNULL(i.categoria,'')='' THEN r.nome ELSE i.categoria || ' - ' || r.nome END) extra,i.receita_id parent_id,r.caderno_id caderno_id,i.receita_link_id,i.bloqueado FROM ingredientes i JOIN receitas r ON r.id=i.receita_id WHERE r.caderno_id=" + caderno + " ORDER BY i.nome,r.nome", q);
         }
@@ -4644,6 +4857,7 @@ public class MainActivity extends Activity {
         }
 
         void deleteReceita(int id) {
+            getWritableDatabase().delete("receita_complementos", "receita_id=? OR complemento_id=?", new String[]{String.valueOf(id), String.valueOf(id)});
             getWritableDatabase().delete("ingredientes", "receita_id=?", new String[]{String.valueOf(id)});
             delete("receitas", id);
         }
